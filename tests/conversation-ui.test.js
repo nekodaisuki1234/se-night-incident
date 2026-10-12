@@ -58,3 +58,8 @@ test('返答演出中はヘッダー時刻と残り時間が進まない',()=>{
 test('期限終了は会話を読み終えてから結果を手動表示する',async()=>{
  const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');visible=g.timeline.length;render();g.minutes=284;execute(g,'job status');playReplies();");await h.drain();assert.equal(h.el('deadline').textContent,'4時45分の復旧期限を超過');assert.equal(h.el('result').open,false);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);assert.match(h.el('result-summary').textContent,/顛末書.*1ヶ月のなぜなぜ分析/);
 });
+
+test('Zoomの選択で期限を超えたら会議画面を閉じて結果へ進める',async()=>{
+ const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");await h.drain();assert.equal(h.el('meeting').open,true);
+ h.run('g.minutes=284;');h.el('meeting-choices').children[0].onclick();await h.drain();assert.equal(h.run('g.deadlineEnded'),true);assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,1);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);
+});

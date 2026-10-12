@@ -548,7 +548,7 @@ export function restoreGame(raw){
  }catch{return null;}
 }
 
-export function meetingActive(g){return !!g.meeting&&g.meeting.phase!=='done';}
+export function meetingActive(g){return !g.ended&&!g.dispatch&&!g.managerEnding&&!!g.meeting&&g.meeting.phase!=='done';}
 function meetingLine(g,sender,text,pauseBefore=0){
  const n=g.timeline.length;push(g,'internal',sender,text);
  if(g.timeline.length>n)Object.assign(g.timeline.at(-1),{presentation:'meeting',pauseBefore});

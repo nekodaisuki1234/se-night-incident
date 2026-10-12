@@ -11,6 +11,7 @@ const labels={internal:'社内',customer:'顧客メール',operations:'操作報
 function scrollLatest(){window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'});$('new-messages').hidden=true;}
 function renderClock(){$('time').textContent=time(g);$('deadline').textContent=deadlineText(g);$('deadline').hidden=!g.infraDeadline;}
 function render(){
+ if(!meetingActive(g)&&$('meeting').open){$('meeting').close();choiceKey='';}
  const joined=!!g.managerEnding&&visible>g.endingStart;const members=['あなた','鬼塚','田山（シニアテクニカルスペシャリスト）','森',...(g.infraDeadline?['佐伯（インフラ）']:[]),...(joined?['一条（PM）']:[])];$('member-count').textContent=members.length+'人';$('member-list').textContent=members.join('\n');
  $('manager-blackout').hidden=!(g.managerEnding?.phase==='blackout'&&visible===g.timeline.length&&!resultRequested);$('manager-result').disabled=busy;
  renderClock();$('trust').value=g.trust;$('trust-num').textContent=g.trust;$('mental').value=g.mental;$('mental-num').textContent=g.mental;
