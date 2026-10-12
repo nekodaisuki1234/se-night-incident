@@ -633,8 +633,8 @@ function answerMeeting(g,choice){
  }
  if(choice.id==='meeting-claim'){m.claim=true;meetingLine(g,'部長',m.phase==='repair'?'根拠を聞いています。確約を繰り返しても説明にはなりません。':'その5分の根拠は何ですか？ 確認が残っている状態で、なぜ確約できるんですか？');}
  else meetingLine(g,'部長',m.phase==='repair'?'作業中なのは分かっています。影響と次の対応の説明をお願いしています。':'結局、確認できているのはどこまで？ 作業の話だけでは、こちらは判断できません。');
- if(m.phase==='repair'){closeMeeting(g,true);return;}
- m.phase='repair';meetingLine(g,'鬼塚｜リーダー','確認できたことと、まだ分からないことを分けて。次に何をするかまで説明して。');
+ if(m.phase==='repair'){meetingLine(g,'鬼塚｜リーダー','時間がないんだ。簡潔にしろ。');closeMeeting(g,true);return;}
+ m.phase='repair';meetingLine(g,'鬼塚｜リーダー',choice.id==='meeting-claim'?'あ？ 何を根拠に言ってんだお前？ 時間がないんだ。聞かれたことに簡潔に答えろ。':'あ？ なに言ってんだお前？ 主語がねえんだよ、何について？');
 }
 function closeMeeting(g,takenOver){
  const m=g.meeting;m.takenOver=takenOver;m.phase='closing';

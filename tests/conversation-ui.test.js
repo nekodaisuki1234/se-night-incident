@@ -42,7 +42,7 @@ test('期限直前の調査は一度だけ実行し古い催促を後から追�
 
 test('Zoom画面は操作結果の表示後に開き、通常三択を閉じ会議終了後に戻す',async()=>{
  const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");assert.equal(h.el('meeting').open,false);await h.drain();assert.equal(h.el('meeting').open,true);assert.equal(h.el('meeting-choices').children.length,3);assert.equal(h.el('choices').children.length,0);const clock=h.run('g.clock');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.run('g.clock'),clock);
- h.el('meeting-choices').children[0].onclick();await h.drain();h.el('meeting-choices').children[0].onclick();await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,3);assert.equal(h.run('g.mismatchSeen'),true);
+ h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');assert.equal(h.el('meeting-log').children.at(-1).children[0].textContent,'あなた');await h.drain();h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,3);assert.equal(h.run('g.mismatchSeen'),true);
 });
 
 test('マネージャー入力中の後に暗転し結果ボタンを押すまで振り返りを表示しない',async()=>{
