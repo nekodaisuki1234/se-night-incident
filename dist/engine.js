@@ -50,7 +50,7 @@ function executeCore(g,raw){
  if(/^job status SALES_SUMMARY$/i.test(c)){if(g.recovered){fresh(g,'summary');return emit(g,'SALES_SUMMARY NORMAL RC=0 / 後続すべて正常終了','success');}return emit(g,'SALES_SUMMARY WAITING（取込の正常終了待ち）');}
  if(/^SELECT COUNT\(\*\) FROM sales WHERE business_date\s*=\s*'20261012'$/i.test(c)){if(g.recovered){fresh(g,'count');return emit(g,'COUNT(*) = 1248 / 入力1,248件と一致','success');}return emit(g,'COUNT(*) = 0');}
  if(/^job stop ACCOUNT_SYNC$/i.test(c)){
-  if(g.secondary)return emit(g,'ACCOUNT_SYNCはすでに停止しています。','error');g.secondary=true;g.hadSecondary=true;g.internalReported=false;g.approved.delete('ACCOUNT_SYNC');penalty(g,`待て。なんでACCOUNT_SYNCを止めた？ 対応対象はSALES_IMPORTだよな。正常稼働中の別系統が止まっている。元の障害とは別に、今の操作の影響を報告して。これで影響が広がったら、説明するのは俺なんだよ。これ以上影響を広げるな。`);push(g,'customer','高橋｜顧客','口座同期まで止まっています。最初の障害と関係があるんですか？ 操作の経緯を説明してください。');return emit(g,'ACCOUNT_SYNC STOPPED / 追加障害が発生','error');
+  if(g.secondary)return emit(g,'ACCOUNT_SYNCはすでに停止しています。','error');g.secondary=true;g.hadSecondary=true;g.internalReported=false;g.approved.delete('ACCOUNT_SYNC');penalty(g,'普段トロいのに、こういう時には慎重さに欠くのはなんでなんだ？');push(g,'customer','高橋｜顧客','口座同期まで止まっています。最初の障害と関係があるんですか？ 操作の経緯を説明してください。');return emit(g,'ACCOUNT_SYNC STOPPED / 追加障害が発生','error');
  }
  const rerun=c.match(/^job rerun (SALES_IMPORT|ACCOUNT_SYNC)$/i);
  if(rerun){const target=rerun[1].toUpperCase();const approval=g.approved.has(target);g.approved.delete(target);
@@ -318,7 +318,6 @@ function beginDispatch(g,operation,reason,kind){
  event(g,'鬼塚が出動：'+operation+'／'+reason);
  if(kind==='repeated-unauthorized')push(g,'internal','鬼塚｜リーダー','承認前に実行するなと伝えた後も、SALES_IMPORTを無断で再実行したな。これ以上、操作を任せ続ける判断はできない。');
  push(g,'internal','鬼塚｜リーダー','……もういい。そこから何も触るな。');
- push(g,'internal','鬼塚｜リーダー','確認だけのつもりでも操作するな。画面はそのままにしておけ。');
  push(g,'internal','鬼塚｜リーダー','今からタクシーで向かう。');
  push(g,'internal','田山｜ベテラン',takeTayama(g,'dispatch',true));
  push(g,'internal','システム','鬼塚がタクシーで移動中です。通常操作を停止しました。');
@@ -328,10 +327,16 @@ export function advanceDispatch(g,seconds){
  g.dispatch.remaining=Math.max(0,g.dispatch.remaining-seconds);
  if(g.dispatch.remaining>0)return;
  g.dispatch.phase='arrived';
- push(g,'internal','システム','タクシーが現場に到着しました');
- push(g,'internal','鬼塚｜リーダー','……席、代わって。');
- finish(g,'対応交代');
+ g.endingStart=g.timeline.length;g.endingVisible=g.endingStart;
+ finish(g,'対応交代'); // Arrival is final; the remaining messages are presentation only.
+ onsiteMessage(g,'システム','タクシーが現場に到着しました',400);
+ onsiteMessage(g,'鬼塚｜リーダー','お前は一体何ならできるんだ？',650);
+ onsiteMessage(g,'鬼塚｜リーダー','……ライブラリアンさえやってくれたらいいから',1500);
+ onsiteMessage(g,'システム','〜完〜',1000);
+
 }
+
+function onsiteMessage(g,sender,text,pauseBefore){push(g,'internal',sender,text);Object.assign(g.timeline.at(-1),{presentation:'onsite',pauseBefore});}
 
 export function messageSurface(message){return message.channel==='customer'?'customer':'teams';}
 
