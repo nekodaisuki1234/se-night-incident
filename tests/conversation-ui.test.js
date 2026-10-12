@@ -113,3 +113,9 @@ test('顧客への遅い撤回から訂正三択へ進み、材料提出は一�
  assert.equal(h.el('choices').children.length,3);const facts=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('鬼塚へ共有'));assert.ok(facts);const at=h.run('g.minutes');facts.onclick();facts.onclick();await h.drain();assert.equal(h.run('g.minutes'),at+5);assert.equal(h.run('g.customerPromise.explanationCompleted'),true);assert.equal(h.run('g.recovered'),false);
  assert.ok(h.run("g.timeline.some(m=>m.channel==='customer'&&m.text.includes('業務側へ再案内します'))"));const saved=h.run('serializeGame(g)');const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.minutes'),at+5);assert.equal(resumed.run('g.customerPromise.explanationCompleted'),true);
 });
+
+test('4回目のSQL後に方針三択を表示し、連打・再開でも方針整理を二重実行しない',async()=>{
+ const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');for(let i=0;i<4;i++)execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");playReplies();");await h.drain();
+ assert.equal(h.el('choices').children.length,3);const a=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('確認済みの事実と未確認事項を整理'));assert.ok(a);const at=h.run('g.minutes'),credit=h.run('g.trust');a.onclick();a.onclick();await h.drain();assert.equal(h.run('g.minutes'),at);assert.equal(h.run('g.trust'),credit);assert.equal(h.run('g.facts.files'),false);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('受信ファイルの一覧')));
+ const saved=h.run('serializeGame(g)'),resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.historyReview.resolved'),true);assert.equal(resumed.run('g.trust'),credit);assert.equal(resumed.el('choices').children.length,3);
+});
