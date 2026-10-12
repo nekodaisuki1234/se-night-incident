@@ -8,23 +8,23 @@ export const commands = [
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
 export function createGame({setbacks=true}={}) {
- return {setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {dispatch:null,dangerActions:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
  messages:{internal:[],customer:[]},timeline:[],events:[],unread:{internal:0,customer:0}};
 }
-function push(g,channel,sender,text){if(!text)return;if(sender==='鬼塚｜リーダー'&&!text.includes('承認する')&&g.timeline.findLast(m=>m.sender===sender)?.text===text)return;const message={sender,text,time:g.minutes,channel};g.timeline.push(message);if(g.messages[channel]){g.messages[channel].push(message);if(sender!=='あなた')g.unread[channel]++;}}
+function push(g,channel,sender,text){if(!text)return;if(sender==='鬼塚｜リーダー'&&!text.includes('承認する')&&g.timeline.some(m=>m.sender===sender&&m.text===text))return;const message={sender,text,time:g.minutes,channel};g.timeline.push(message);if(g.messages[channel]){g.messages[channel].push(message);if(sender!=='あなた')g.unread[channel]++;}}
 function event(g,text){g.events.push({time:g.minutes,text});}
 function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
 function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
 function act(g){g.actions++;g.minutes++;}
-export function start(g){g.started=true;push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。まず、分かっている影響と次の対応を聞かせて。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に状況を整理して。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
+export function start(g){if(g.started||g.dispatch)return;g.started=true;push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。まず、分かっている影響と次の対応を聞かせて。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に状況を整理して。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text){urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){
- if(g.ended)return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
+ if(g.ended||g.dispatch)return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
  if(target==='SALES_IMPORT'){
   if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','やって大丈夫と言える根拠は？ 失敗した場合の影響と、戻せるかどうかも整理してくれ。その説明ではまだ承認できない。');return;}
   if(g.lockEncountered&&!g.lockReleased){push(g,'internal','鬼塚｜リーダー','止まった要因がまだ残っているよな。状況が変わった根拠がないと承認できない。間違えたら説明するのは俺なんだよ。');return;}
@@ -50,13 +50,13 @@ function executeCore(g,raw){
  if(/^job status SALES_SUMMARY$/i.test(c)){if(g.recovered){fresh(g,'summary');return emit(g,'SALES_SUMMARY NORMAL RC=0 / 後続すべて正常終了','success');}return emit(g,'SALES_SUMMARY WAITING（取込の正常終了待ち）');}
  if(/^SELECT COUNT\(\*\) FROM sales WHERE business_date\s*=\s*'20261012'$/i.test(c)){if(g.recovered){fresh(g,'count');return emit(g,'COUNT(*) = 1248 / 入力1,248件と一致','success');}return emit(g,'COUNT(*) = 0');}
  if(/^job stop ACCOUNT_SYNC$/i.test(c)){
-  if(g.secondary)return emit(g,'ACCOUNT_SYNCはすでに停止しています。','error');g.secondary=true;g.hadSecondary=true;g.internalReported=false;g.approved.delete('ACCOUNT_SYNC');penalty(g,`待て。なんでACCOUNT_SYNCを止めた？ 対応対象はSALES_IMPORTだよな。正常稼働中の別系統が止まっている。元の障害とは別に、今の操作の影響を報告して。これで影響が広がったら、説明するのは俺なんだよ。再開は俺に確認してからだ。`);push(g,'customer','高橋｜顧客','口座同期まで止まっています。最初の障害と関係があるんですか？ 操作の経緯を説明してください。');return emit(g,'ACCOUNT_SYNC STOPPED / 追加障害が発生','error');
+  if(g.secondary)return emit(g,'ACCOUNT_SYNCはすでに停止しています。','error');g.secondary=true;g.hadSecondary=true;g.internalReported=false;g.approved.delete('ACCOUNT_SYNC');penalty(g,`待て。なんでACCOUNT_SYNCを止めた？ 対応対象はSALES_IMPORTだよな。正常稼働中の別系統が止まっている。元の障害とは別に、今の操作の影響を報告して。これで影響が広がったら、説明するのは俺なんだよ。これ以上影響を広げるな。`);push(g,'customer','高橋｜顧客','口座同期まで止まっています。最初の障害と関係があるんですか？ 操作の経緯を説明してください。');return emit(g,'ACCOUNT_SYNC STOPPED / 追加障害が発生','error');
  }
  const rerun=c.match(/^job rerun (SALES_IMPORT|ACCOUNT_SYNC)$/i);
  if(rerun){const target=rerun[1].toUpperCase();const approval=g.approved.has(target);g.approved.delete(target);
   if(!approval){urgentCall(g,'本番バッチの再実行通知が来ました。いま実行したんですか？ 承認と影響確認は済んでいるんですよね？');g.mental=Math.max(0,g.mental-15);event(g,`${target}を無断で再実行`);push(g,'internal','鬼塚｜リーダー','その再実行、対象の話は分かったが俺はまだ承認していない。誰の判断で進めた？ 実行結果と影響を今すぐ報告して。');}
   if(target==='ACCOUNT_SYNC'){if(!g.secondary)return emit(g,'実行拒否：正常稼働中のジョブです。','error');g.secondary=false;progress(g);event(g,'追加障害を復旧');return emit(g,'ACCOUNT_SYNC RUNNING / 再開完了','success');}
-  if(g.recovered){penalty(g,'処理済みのジョブをもう一回流したのか？ 金融で二重処理が何を意味するか分かってるな。もう触るな。担当交代だ。');finish(g,'対応交代');return emit(g,'DUPLICATE EXECUTION DETECTED','error');}
+  if(g.recovered){penalty(g,'処理済みのジョブをもう一回流したのか？ 金融で二重処理が何を意味するか分かってるな。二重処理につながる操作だ。');return emit(g,'DUPLICATE EXECUTION DETECTED','error');}
   if(!g.file){penalty(g,'また失敗か。いけると思ってやったんだよな？ で、今度はどうすんだ？');return emit(g,'SALES_IMPORT ABEND RC=12 / INPUT FILE NOT FOUND','error');}
   if(!g.facts.checked){penalty(g,'大丈夫かも分からないままやったのか？ その判断、どう説明するつもりだ？');return emit(g,'INPUT VALIDATION REQUIRED / 実行保留','error');}
   if(g.setbacks&&!g.lockReleased){g.lockEncountered=true;progress(g);event(g,'再実行がDBロックで失敗（更新0件・ロールバック済み）');push(g,'internal','森｜監視','今度はRC=28、DBロック待ちでタイムアウトです。更新は0件、ロールバックを確認しました。');emit(g,'SALES_IMPORT ABEND RC=28 / LOCK TIMEOUT / 0 rows committed','error');push(g,'internal','鬼塚｜リーダー','DBロックで止まったんだな。更新0件という報告は受け取った。復旧見込みに何が変わる？ 再実行は改めて確認してくれ。');return;}
@@ -106,6 +106,7 @@ export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){re
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
  if(g.ended||!text.trim())return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
+ if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
  const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?(['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
 }
 export function parseCommandReport(raw){
@@ -116,13 +117,13 @@ export function parseCommandReport(raw){
  const command=(quoted?.[1]||plain?.[1]||text).trim();
  return /^(?:job\s|tail\s|cat\s|ls\s|check\s|SELECT\s|help$)/i.test(command)?command:null;
 }
-function finish(g,title){g.ended=true;g.result=title;event(g,title);}
-export function tick(g,seconds){return withDialogue(g,{kind:'tick'},()=>tickCore(g,seconds));}
+function finish(g,title){if(g.ended||g.dispatch?.phase==='travelling')return;g.ended=true;g.result=title;event(g,title);}
+export function tick(g,seconds){return withDialogue(g,{kind:'tick',seconds},()=>tickCore(g,seconds));}
 function tickCore(g,seconds){
  if(!g.started||g.ended)return;g.clock+=seconds;g.techIdle+=seconds;g.replyIdle+=seconds;
  const t=Math.min(3,Math.floor(g.techIdle/90)),r=Math.min(3,Math.floor(g.replyIdle/75));
  if(t>g.techLevel){g.techLevel=t;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'internal','鬼塚｜リーダー',['','状況の共有を頼む。確認できたことと、まだ分からないことは分けてくれ。','進展がないまま時間が過ぎている。次の対応はどうすんだ？ こっちも説明しないといけないんだよ。','このまま任せ続ける判断はできない。担当を交代する。これ以上の操作は止めてくれ。'][t]);if(t===3)finish(g,'対応交代');}
- if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'customer','高橋｜顧客',['','進捗報告をお願いします。こちらから聞かないと状況が分からないんですか。','報告がないので電話しました。現状を説明してください。','回答がありません。責任者に対応を引き継いでください。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
+ if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'customer','高橋｜顧客',['','進捗報告をお願いします。こちらから聞かないと状況が分からないんですか。','報告がないので電話しました。現状を説明してください。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','状況が分からないため報告が必要とのことです。','報告がないため電話したとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
  if(g.clock>=25&&!g.callSeen){g.callSeen=true;g.call=true;}
 }
 export function answerCall(g,choice){return withDialogue(g,{kind:'call',choice,urgent:g.callReason},()=>answerCallCore(g,choice));}
@@ -134,12 +135,13 @@ function answerCallCore(g,choice){
  if(choice==='ignore'){g.trust=Math.max(0,g.trust-5);push(g,'customer','高橋｜顧客','電話に出られないなら、メールで状況を報告してください。');}
  else if(choice==='promise'){g.correctionNeeded=true;g.mental=Math.max(0,g.mental-10);g.trust=Math.max(0,g.trust-15);push(g,'customer','高橋｜顧客','5分で復旧する根拠は何ですか。原因と手順は確認済みですか。');}
  else{g.callAnswered=true;g.replyIdle=0;g.replyLevel=0;push(g,'customer','高橋｜顧客',urgent?'経緯は聞きました。勝手な判断で影響を広げられては困ります。確認できた結果を必ず報告してください。':'現在の確認状況、承知しました。残っている作業の結果が分かったら報告してください。');}
+ push(g,'internal','あなた',choice==='promise'?'顧客に5分以内の復旧を約束しましたが、根拠を問われています。':choice==='ignore'?'顧客の電話には応答しませんでした。メールで状況を伝える必要があります。':'電話対応の共有です。'+customerStatusText(g));event(g,'顧客の電話に対応');
  push(g,'internal','鬼塚｜リーダー',choice==='ignore'?'電話を取らないなら、メールを先に出せ。無応答のまま放置して信用を落とすな。':choice==='promise'?'その5分、何を根拠に言ってる？ 顧客に伝えていい数字なのか。後から違いましたじゃ済まない。根拠がないなら訂正してくれ。':'確認できた事実と残っている点は伝わったな。その説明は受け取った。次の進展があったら共有してくれ。');
- event(g,'顧客の電話に対応');
+
 }
 export function time(g){return `${String(Math.floor(g.minutes/60)).padStart(2,'0')}:${String(g.minutes%60).padStart(2,'0')}`;}
 function baseChoices(g){
- if(!g.started||g.ended)return [];
+ if(!g.started||g.ended||g.dispatch)return [];
  const command=(label,cmd)=>({label,type:'command',command:cmd,detail:'操作を実施したと報告'});
  const approval=target=>({label:`${target}の再実行をリーダーに確認する`,type:'approval',target,detail:'社内へ確認'});
  const mail=(label,id,text)=>({label,type:'message',channel:'customer',id,text,detail:'顧客へメール'});
@@ -168,7 +170,7 @@ function baseChoices(g){
  return [complete,command('後続ジョブの状態をもう一度確認する','job status SALES_SUMMARY'),rerun];
 }
 export function chooseAction(g,choice){
- if(!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ if(g.dispatch||!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
  if(g.facts.files&&!g.recovered&&!g.upperReportRequested){g.upperReportRequested=true;event(g,'上席から状況報告の要求');push(g,'internal','森｜監視','上席から状況報告を求められました。判明している影響、未確認事項、次の対応を共有してください。');push(g,'internal','鬼塚｜リーダー','今、上から状況を聞かれてる。分かってることだけでいいから整理して。未確認の点は分けてくれ。');}
  const before=g.timeline.length;
  const reportState=progressText(g);
@@ -177,6 +179,7 @@ export function chooseAction(g,choice){
  if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
  else if(choice.type==='approval')requestApproval(g,choice.target);
  else send(g,choice.channel,choice.text,choice.id);
+ if(g.dispatch)return;
  if(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー'))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
  if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  
@@ -208,7 +211,7 @@ function leaderFeedback(g,choice){
 
 export function progressText(g){
  if(g.secondary)return '売上取込とは別に、私の操作でACCOUNT_SYNCを停止しました。再開確認と復旧を進めます。';
- if(g.recovered)return g.facts.summary&&g.facts.count?'売上取込と後続の正常終了、1,248件の一致を確認しました。復旧報告をまとめています。':'売上取込は正常終了しました。後続と処理件数の確認を進めています。';
+ if(g.recovered){if(!g.facts.summary)return '売上取込は正常終了しました。後続の状態と処理件数の確認を進めています。';if(!g.facts.count)return '売上取込と後続の正常終了を確認しました。処理件数は確認中です。';return g.internalReported?'売上取込と後続の正常終了、1,248件の一致を社内へ報告済みです。顧客への復旧報告を進めています。':'売上取込と後続の正常終了、1,248件の一致を確認しました。復旧報告をまとめています。';}
  if(g.lockEncountered&&!g.lockReleased)return 'ファイル不備は解消しましたが、再実行がDBロックで停止しました。更新0件・ロールバック済みで、保持元の確認と解除を進めています。';
  if(g.fileDamaged)return g.mismatchSeen?'受信ファイルに1件欠損とチェックサム不一致があり、投入を止めています。完全なファイルの再送が必要です。':'連携元の二次連絡先につながりファイルを受信しました。まだ内容は未検証です。';
  if(g.fileRequested&&!g.file)return '連携元の一次連絡先が応答せず、ファイルは未着です。別の連絡経路で確認を進めます。';
@@ -226,6 +229,7 @@ export function nextChoices(g){
 
 // Topics represent distinct points, not interchangeable paraphrases. Exhaustion is silence.
 const tayamaLines={
+ dispatch:[['remoteOnly','現場で直接確認いただくのが確実ですね。私もチャットでは確認できますので。']],
  investigation:[['flow','個別のエラーだけでなく、全体の流れも見ておいた方がいいですね。原因の切り分けと影響の確認は、別の話ですので。']],
  vendor:[['coordination','連携障害は技術だけでは片付かないんですよね。今の連絡体制でどこまで動けるかは、担当の皆さんで整理いただければ。']],
  mismatch:[['integrity','件数差が小さくても、整合性の問題は残りますね。転送でこういうことは起こり得ます。受信できたことと、中身が正しいことは別ですので。']],
@@ -259,7 +263,9 @@ function takeTayama(g,kind,direct=false){
  return row[1];
 }
 function criticComment(g,context,before){
+ if(g.dispatch)return;
  if(g.timeline.length===before.messages)return;
+ if((!before.secondary&&g.secondary)||g.terminal.slice(before.terminal).some(t=>t.text==='DUPLICATE EXECUTION DETECTED'))return;
  const freshEvents=g.events.slice(before.events).map(e=>e.text);
  let kind;
  if(context.id==='patch-file'||context.id==='critic-approval')return; // Direct replies are handled by the provider.
@@ -280,15 +286,57 @@ function criticComment(g,context,before){
 // Only the outer action comments: a chat command invokes execute internally.
 let dialogueDepth=0;
 function withDialogue(g,context,run){
+ if(g.dispatch){if(context.kind==='tick')advanceDispatch(g,context.seconds);return;}
  const outer=dialogueDepth===0;
- const before={messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
+ const before={terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
  dialogueDepth++;
- try{return run();}finally{dialogueDepth--;if(outer)criticComment(g,context,before);}
+ try{return run();}finally{dialogueDepth--;if(outer){criticComment(g,context,before);assessDanger(g,context,before);}}
+}
+
+function assessDanger(g,context,before){
+ if(g.dispatch||g.ended)return;
+ const recent=g.events.slice(before.events);
+ const duplicate=g.terminal.slice(before.terminal).some(t=>t.text==='DUPLICATE EXECUTION DETECTED');
+ const unauthorized=recent.some(e=>e.text==='SALES_IMPORTを無断で再実行');
+ if(unauthorized)g.dangerActions.push({kind:'unauthorized',operation:'job rerun SALES_IMPORT',time:g.minutes});
+ if(!before.secondary&&g.secondary){
+  beginDispatch(g,'job stop ACCOUNT_SYNC','正常稼働中の別系統ACCOUNT_SYNCを停止し、売上取込とは別の障害を発生させた。','wrong-job');
+ }else if(duplicate){
+  beginDispatch(g,'job rerun SALES_IMPORT','正常終了済みの売上取込を再実行し、金融データの二重処理につながる危険な操作を行った。','duplicate');
+ }else if(context.id==='patch-file'&&g.mistakes>before.mistakes){
+  beginDispatch(g,'欠損した1件を独断で手修正','正本との整合性を確認せず金融データを変更し、データの正当性を損なう操作を行った。','data-edit');
+ }else if(unauthorized&&g.dangerActions.filter(a=>a.kind==='unauthorized').length>=2){
+  beginDispatch(g,'job rerun SALES_IMPORT（無承認で繰り返し実行）','承認を取るよう指摘された後も無承認で本番バッチを再実行し、操作を任せ続けられないと判断された。','repeated-unauthorized');
+ }
+}
+function beginDispatch(g,operation,reason,kind){
+ if(g.dispatch||g.ended)return;
+ g.dispatch={phase:'travelling',remaining:3,operation,reason,kind};
+ g.dangerActions.push({kind,operation,time:g.minutes});
+ // Departure owns the ending: dismiss the urgent-call branch and freeze all work.
+ g.call=false;g.callReason=null;
+ event(g,'鬼塚が出動：'+operation+'／'+reason);
+ push(g,'internal','鬼塚｜リーダー','今の操作について、'+reason);
+ push(g,'internal','鬼塚｜リーダー','……もういい。そこから何も触るな。');
+ push(g,'internal','鬼塚｜リーダー','確認だけのつもりでも操作するな。画面はそのままにしておけ。');
+ push(g,'internal','鬼塚｜リーダー','今からタクシーで向かう。');
+ push(g,'internal','田山｜ベテラン',takeTayama(g,'dispatch',true));
+ push(g,'internal','システム','鬼塚がタクシーで移動中です。通常操作を停止しました。');
+}
+export function advanceDispatch(g,seconds){
+ if(g.dispatch?.phase!=='travelling'||g.ended||!Number.isFinite(seconds)||seconds<=0)return;
+ g.dispatch.remaining=Math.max(0,g.dispatch.remaining-seconds);
+ if(g.dispatch.remaining>0)return;
+ g.dispatch.phase='arrived';
+ push(g,'internal','システム','タクシーが現場に到着しました');
+ push(g,'internal','鬼塚｜リーダー','……席、代わって。');
+ finish(g,'対応交代');
 }
 
 export function messageSurface(message){return message.channel==='customer'?'customer':'teams';}
 
 export function objectiveText(g){
+ if(g.dispatch)return g.dispatch.phase==='travelling'?'鬼塚がタクシーで移動中です。操作を停止し、そのまま待機してください。':'鬼塚が現場に到着。担当交代となりました。';
  if(g.secondary)return 'ACCOUNT_SYNCの再開と正常稼働の確認が残っています。';
  if(g.recovered){
   if(!g.facts.summary)return '売上取込は正常終了。後続の売上集計の確認が残っています。';
@@ -326,6 +374,7 @@ function variedFeedback(g,choice){
 }
 
 function colleagueAdvance(g,choice,repeatedReport){
+ if(g.dispatch||g.ended)return;
  const next=baseChoices(g)[0];if(!next)return;
  const reason=repeatedReport?'同じ報告を繰り返してどうする。状況が変わってないだろ。':choice.id==='critic-approval'?'田山さんに判断を預けて終わりか？ お前が担当だろ。':choice.id==='wait-vendor'?'待ってるだけじゃ朝になるぞ。森、そっちで進めてくれ。':choice.id==='complete'?'確認も終わってないのに完了って言ったのか。森、残りを引き取ってくれ。':choice.id==='patch-file'?'その場しのぎで増やした手間、誰が片付けるんだ。森、頼む。':'もう確認したことを繰り返してるぞ。森、先へ進めてくれ。';
  push(g,'internal','鬼塚｜リーダー',reason);
@@ -338,7 +387,7 @@ function colleagueAdvance(g,choice,repeatedReport){
  else send(g,next.channel,next.text,next.id);
  // Preserve the actual actor, including the separate customer contact history.
  for(const message of g.timeline.slice(from))if(message.sender==='あなた')message.sender='森｜監視';
- if(!g.ended)push(g,'internal','森｜監視','ここまで私のほうで対応しました。続きの判断をお願いします。');
+ if(!g.ended&&!g.dispatch)push(g,'internal','森｜監視','ここまで私のほうで対応しました。続きの判断をお願いします。');
 }
 
 export function customerStatusText(g){
@@ -361,6 +410,13 @@ export function restoreGame(raw){
   if(data.timeline.some(m=>!m||typeof m.sender!=='string'||typeof m.text!=='string'||!Number.isFinite(m.time)||!['internal','customer','operations'].includes(m.channel)))return null;
   const defaults=createGame();
   const g={...defaults,...data,facts:{...defaults.facts,...data.facts},approved:new Set(data.approved)};
+  if(!Array.isArray(g.dangerActions))g.dangerActions=[];
+  if(data.dangerActions===undefined)g.dangerActions=g.events.filter(e=>e.text==='SALES_IMPORTを無断で再実行').map(e=>({kind:'unauthorized',operation:'job rerun SALES_IMPORT',time:e.time}));
+  if(g.dispatch){
+   const d=g.dispatch;
+   if(!['travelling','arrived'].includes(d.phase)||typeof d.operation!=='string'||typeof d.reason!=='string'||!Number.isFinite(d.remaining)||d.remaining<0)return null;
+   g.call=false;g.callReason=null;g.ended=d.phase==='arrived';g.result=g.ended?'対応交代':null;
+  }
   // Both histories must point at the same messages when a colleague takes over.
   g.messages={internal:g.timeline.filter(m=>m.channel==='internal'),customer:g.timeline.filter(m=>m.channel==='customer')};
   return g;
