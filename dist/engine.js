@@ -20,16 +20,16 @@ function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
 function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
 function act(g){g.actions++;g.minutes++;}
-export function start(g){g.started=true;push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','来たな。状況、原因、影響を順番に出せ。状態を変える操作は先に俺に確認。勝手に触るなよ。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。現状と朝の業務への影響、次回報告予定を回答してください。');push(g,'internal','無能丸｜横断支援','俯瞰すると、初動の仮説の立て方が重要なんですよね。私は全体感を見ていますので、実作業は皆さんでお願いします。');event(g,'現地対応開始');}
+export function start(g){g.started=true;push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','来たな。で、どうすんだ？ 朝までに戻せるんだろうな。何かやるなら先に俺に言えよ。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。現状と朝の業務への影響、次回報告予定を回答してください。');push(g,'internal','田山｜ベテラン','このシステムは長く見ていますから、似た障害も経験ありますよ。ただ、今回の状況は担当の方が一番分かるでしょう。判断はお任せします。');event(g,'現地対応開始');}
 function penalty(g,text){g.mistakes++;g.trust=Math.max(0,g.trust-22);g.procedure=Math.max(0,g.procedure-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){
  if(g.ended)return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
  if(target==='SALES_IMPORT'){
-  if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','判断材料が足りない。当日ファイルの検証と処理履歴は？ そこを確認せず承認を取りに来るな。');return;}
-  if(g.lockEncountered&&!g.lockReleased){push(g,'internal','鬼塚｜リーダー','ロックの原因が残っている。さっきと同じ条件で再実行を承認できるわけないだろ。');return;}
-  if(g.recovered){push(g,'internal','鬼塚｜リーダー','もう処理済みだ。何のために再実行する？ 処理履歴を見ろ。');return;}
+  if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','それで大丈夫って、何を根拠に言ってる？ その説明じゃ俺は了承できないぞ。');return;}
+  if(g.lockEncountered&&!g.lockReleased){push(g,'internal','鬼塚｜リーダー','さっき失敗したばかりだろ。今度はいけるって、何が変わったんだ？');return;}
+  if(g.recovered){push(g,'internal','鬼塚｜リーダー','終わったって言わなかったか？ もう一回やる理由を説明してみろ。');return;}
  }else if(target==='ACCOUNT_SYNC'){
-  if(!g.secondary){push(g,'internal','鬼塚｜リーダー','ACCOUNT_SYNCは正常稼働中だ。停止の根拠がない。触るな。');return;}
+  if(!g.secondary){push(g,'internal','鬼塚｜リーダー','それ、問題が出てるやつなのか？ 関係ないものまで触る話は聞いてないぞ。');return;}
  }else return;
  if(!g.approved.has(target))progress(g);g.approved.add(target);event(g,`${target}の再実行承認`);push(g,'internal','鬼塚｜リーダー',`${target}の再実行を承認する。対象を取り違えるなよ。実行後の確認まで、お前の担当だ。`);
 }
@@ -55,9 +55,9 @@ export function execute(g,raw){
   if(!approval){g.procedure=Math.max(0,g.procedure-15);event(g,`${target}を無断で再実行`);push(g,'internal','鬼塚｜リーダー','待て。その操作、俺は承認してないぞ。誰の判断でやった？ 対象と結果、今すぐ出せ。');}
   if(target==='ACCOUNT_SYNC'){if(!g.secondary)return emit(g,'実行拒否：正常稼働中のジョブです。','error');g.secondary=false;progress(g);event(g,'追加障害を復旧');return emit(g,'ACCOUNT_SYNC RUNNING / 再開完了','success');}
   if(g.recovered){penalty(g,'処理済みのジョブをもう一回流したのか？ 金融で二重処理が何を意味するか分かってるな。もう触るな。担当交代だ。');finish(g,'対応交代');return emit(g,'DUPLICATE EXECUTION DETECTED','error');}
-  if(!g.file){penalty(g,'ファイルがないのに叩き直して何が変わる？ 同じエラー出しただけだろ。ログを読め。');return emit(g,'SALES_IMPORT ABEND RC=12 / INPUT FILE NOT FOUND','error');}
-  if(!g.facts.checked){penalty(g,'未検証のファイルを投入しましたね。日付と件数を確認してください。');return emit(g,'INPUT VALIDATION REQUIRED / 実行保留','error');}
-  if(g.setbacks&&!g.lockReleased){g.lockEncountered=true;progress(g);event(g,'再実行がDBロックで失敗（更新0件・ロールバック済み）');push(g,'internal','森｜監視','今度はRC=28、DBロック待ちでタイムアウトです。更新は0件、ロールバックを確認しました。');emit(g,'SALES_IMPORT ABEND RC=28 / LOCK TIMEOUT / 0 rows committed','error');push(g,'internal','鬼塚｜リーダー','ファイルは直ったが別の原因で止まった。今回の承認は使い切りだ。保持元と再実行条件を確認し直せ。');return;}
+  if(!g.file){penalty(g,'また失敗か。いけると思ってやったんだよな？ で、今度はどうすんだ？');return emit(g,'SALES_IMPORT ABEND RC=12 / INPUT FILE NOT FOUND','error');}
+  if(!g.facts.checked){penalty(g,'大丈夫かも分からないままやったのか？ その判断、どう説明するつもりだ？');return emit(g,'INPUT VALIDATION REQUIRED / 実行保留','error');}
+  if(g.setbacks&&!g.lockReleased){g.lockEncountered=true;progress(g);event(g,'再実行がDBロックで失敗（更新0件・ロールバック済み）');push(g,'internal','森｜監視','今度はRC=28、DBロック待ちでタイムアウトです。更新は0件、ロールバックを確認しました。');emit(g,'SALES_IMPORT ABEND RC=28 / LOCK TIMEOUT / 0 rows committed','error');push(g,'internal','鬼塚｜リーダー','また止まった？ さっきの話と違うだろ。で、どうすんだ？ 次も勝手にやるなよ。');return;}
   g.recovered=true;g.recoveredAt=g.minutes;progress(g);event(g,'売上取込と後続集計が正常終了');push(g,'internal','森｜監視','取込と後続の正常終了を検知しました。件数確認と顧客報告をお願いします。');return emit(g,'SALES_IMPORT NORMAL RC=0 / 1248 rows\n後続SALES_SUMMARYの正常終了を検知','success');
  }
  return emit(g,'未対応のコマンド・SQLです。候補から選んで編集できます。','error');
@@ -68,10 +68,10 @@ export class RuleBasedProvider {
    if(id==='escalate-file'){if(!g.fileRequested)return '一次連絡先への確認が先です。';if(g.file)return 'ファイルはすでに受信済みです。検証結果を確認してください。';g.file=true;g.fileDamaged=true;g.fileAt=g.minutes;progress(g);event(g,'二次連絡先からファイル再送（未検証）');return '二次連絡先につながりました。転送が途中で切れていたようです。ファイルを受信しましたが、内容はまだ未検証です。';}
    if(id==='wait-vendor')return 'まだ折り返しはありません。待っている間も後続集計は止まったままです。';
    if(id==='resend-file'){if(!g.mismatchSeen)return '再送の根拠がまだありません。まず受信ファイルを検証してください。';g.fileDamaged=false;g.mismatchSeen=false;g.facts.checked=false;g.facts.history=false;g.approved.delete('SALES_IMPORT');g.fileAt=g.minutes;progress(g);event(g,'欠損を連携元へ伝え、完全なファイルを再受信');return '欠損件数とチェックサム不一致を連携元に伝えました。完全なファイルを再受信しました。差し替えたので、内容と未処理状態を確認し直してください。';}
-   if(id==='patch-file'){penalty(g,'元データもないのに1件補ったのか？ 金融のデータだぞ。手修正したものは投入するな。正しいファイルを再取得しろ。');return '私は一般論として可能性を述べただけです。手修正の判断を承認したわけではないので、その点は切り分けていただきたいですね。';}
+   if(id==='patch-file'){penalty(g,'勝手にデータを書き換えたのか？ お前、それで何かあったらどう説明するんだ？');return '私は整合性が重要だと申し上げただけです。手修正の判断を承認したわけではないので、その点は切り分けていただきたいですね。';}
    if(id==='release-lock'){if(!g.lockInspected)return '保持元が分かっていない状態では解除できません。待機セッションを確認してください。';g.lockReleased=true;g.approved.delete('SALES_IMPORT');progress(g);event(g,'DB担当がREPORT_EXPORTの残存セッションを確認してロック解除');return 'DB担当に確認しました。REPORT_EXPORTは処理終了後のセッションだけが残っていました。担当側で終了し、ロック解除を確認しました。';}
    if(id==='critic-approval')return '私の立場としては、方向性を提示しただけなんですよね。実行の可否と責任は、現場のリーダー判断になるかと。';
-   if(id==='ack'){if(!g.ack){g.ack=true;progress(g);}return '了解。ログと対象ジョブから確認してください。';}
+   if(id==='ack'){if(!g.ack){g.ack=true;progress(g);}return '分かった。で、どうすんだ？ お前の考えを聞いてるんだが。';}
    if(id==='request-file'){
     if(!g.facts.log||!g.facts.files)return 'ファイル未着と判断した根拠を確認してください。ログと受信ディレクトリの両方が必要です。';
     if(g.file)return '当日ファイルはすでに到着しています。検証を進めてください。';
@@ -97,7 +97,7 @@ export class RuleBasedProvider {
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){
  if(g.ended||!text.trim())return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
- const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?(['patch-file','critic-approval'].includes(id)?'無能丸｜横断支援':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
+ const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?(['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
 }
 export function parseCommandReport(raw){
  const text=raw.trim();
@@ -111,7 +111,7 @@ function finish(g,title){g.ended=true;g.result=title;event(g,title);}
 export function tick(g,seconds){
  if(!g.started||g.ended)return;g.clock+=seconds;g.techIdle+=seconds;g.replyIdle+=seconds;
  const t=Math.min(3,Math.floor(g.techIdle/90)),r=Math.min(3,Math.floor(g.replyIdle/75));
- if(t>g.techLevel){g.techLevel=t;g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'internal','鬼塚｜リーダー',['','いま何を確認していますか。手が止まっています。','状況が変わっていません。調査結果と次の操作を示してください。','これ以上待てません。担当を交代します。'][t]);if(t===3)finish(g,'対応交代');}
+ if(t>g.techLevel){g.techLevel=t;g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'internal','鬼塚｜リーダー',['','おい、止まってるぞ。いまどうなってる？','さっきから何も変わってないじゃないか。どうすんだ？','もう任せておけない。担当交代だ。'][t]);if(t===3)finish(g,'対応交代');}
  if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'customer','高橋｜顧客',['','進捗報告をお願いします。こちらから聞かないと状況が分からないんですか。','報告がないので電話しました。現状を説明してください。','回答がありません。責任者に対応を引き継いでください。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
  if(g.clock>=25&&!g.callSeen){g.callSeen=true;g.call=true;}
 }
@@ -137,10 +137,10 @@ function baseChoices(g){
  const complete=mail('正常終了と件数一致を報告して対応を終える','complete','売上取込・後続集計の正常終了と1,248件の一致を確認しました。復旧を報告します。');
  const file=mail('確認できた現状と、次の対応を報告する','file-report',progressText(g));
  const msg=(label,id,text)=>({label,type:'message',channel:'internal',id,text,detail:'社内へ連絡'});
- const critic=msg('無能丸に、その助言で実行してよいか確認する','critic-approval','無能丸さん、その助言を根拠に実行してよいですか。承認と責任の所在を確認したいです。');
+ const critic=msg('田山に、その助言で実行してよいか確認する','critic-approval','田山さん、その助言を根拠に実行してよいですか。承認と責任の所在を確認したいです。');
  if(!g.secondary&&g.setbacks){
   if(g.lockEncountered&&!g.lockReleased)return g.lockInspected?[msg('保持元をDB担当に伝え、解除可否を確認する','release-lock','保持元はREPORT_EXPORTのSESSION 812です。更新0件・ロールバック済みです。担当側で状態確認と解除をお願いします。'),rerun,critic]:[command('SQLでロック待ちと保持元セッションを調べる',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';"),rerun,stop];
-  if(g.mismatchSeen)return [msg('件数不一致とチェックサムを伝え、完全なファイルを再送依頼する','resend-file','1件欠損しチェックサムも不一致です。完全なファイルを再送してください。'),msg('無能丸の助言どおり、欠損した1件を手で補う','patch-file','欠損した1件を手で補いました。これで進めます。'),critic];
+  if(g.mismatchSeen)return [msg('件数不一致とチェックサムを伝え、完全なファイルを再送依頼する','resend-file','1件欠損しチェックサムも不一致です。完全なファイルを再送してください。'),msg('自分の判断で、欠損した1件を手で補う','patch-file','欠損した1件を手で補いました。これで進めます。'),critic];
   if(g.fileRequested&&!g.file)return [msg('手順書の二次連絡先へエスカレーションする','escalate-file','一次連絡先が応答しません。手順書にある二次連絡先へ確認してください。'),msg('折り返しを待ち、連絡状況を確認する','wait-vendor','折り返しはありましたか。引き続き一次連絡先の応答を待ちます。'),rerun];
  }
  if(g.secondary)return g.approved.has('ACCOUNT_SYNC')?[command('ACCOUNT_SYNCを再開したと報告する','job rerun ACCOUNT_SYNC'),complete,command('ジョブ一覧を確認したと報告する','job status')]:[approval('ACCOUNT_SYNC'),command('ACCOUNT_SYNCを無断で再開したと報告する','job rerun ACCOUNT_SYNC'),complete];
@@ -165,30 +165,20 @@ export function chooseAction(g,choice){
 }
 function leaderFeedback(g,choice){
  const c=choice.command||'';
- if(c.startsWith('tail'))return 'ログは読んだな。ファイルがないなら、受信側の実物も確認しろ。エラー文だけ見て原因確定にするなよ。';
- if(c.startsWith('ls'))return g.file?'当日ファイルがあるな。あるだけじゃ投入できない。日付・件数・内容を検証しろ。':'前日分しかないな。勝手に流用するなよ。連携元に当日分の転送状況を確認だ。';
- if(c.startsWith('check')&&g.fileDamaged)return '件数もチェックサムも合ってない。届いたから正常、じゃないぞ。データの出所を保ったまま復旧案を出せ。';
- if(c.includes('session_locks'))return '保持元は分かった。別処理のセッションを勝手に切るなよ。担当側の状態と解除可否を確認しろ。';
- if(c.startsWith('check'))return g.facts.checked?'形式と日付は確認できた。で、今日の分は本当に未処理か？ 処理履歴の裏を取れ。':'存在しないファイルを検証してどうする。到着確認が先だ。';
- if(c.includes('batch_history'))return g.recovered?'処理済みだ。これを見て再実行するやつはいないよな？':'当日未処理、そこは確認できた。次は対象と根拠を添えて再実行の確認。順番を飛ばすな。';
- if(c.includes('COUNT('))return g.facts.count?'1,248件、入力と一致したな。後続と他系統も正常なら、顧客に復旧報告。ここで黙って終わるなよ。':'まだ0件だろ。件数確認より先に、取込を復旧させろ。';
- if(c==='job status SALES_SUMMARY')return g.recovered?(g.facts.count?'後続も件数も確認済みだ。再確認はそこまで。顧客への復旧報告を済ませろ。':'後続は正常。ただ「正常終了」だけで復旧扱いにするな。処理件数まで確認だ。'):'取込が落ちたままだから待機中だ。後続を眺めても元の障害は直らないぞ。';
- if(c==='job rerun SALES_IMPORT')return '監視では後続も正常になったな。自分でも後続の終了状態と件数を確認しろ。通知を見ただけで復旧報告するなよ。';
- if(c==='job rerun ACCOUNT_SYNC')return g.recovered?'口座同期も戻った。売上の後続と件数の確認状況を整理して、顧客に両系統の復旧を報告しろ。':'別系統は戻った。自分が増やした障害を戻しただけだからな。元の売上取込の障害に戻れ。';
- if(c==='job status')return '状態は分かった。次に何を調べて、何を直す？ 一覧を見ただけじゃ進捗にならないぞ。';
- if(choice.id==='request-file'&&!g.file)return '連絡しただけじゃ解決してない。つながらない時の連絡経路を使え。待ちぼうけで朝を迎える気か。';
- if(choice.id==='escalate-file')return '連絡は通ったな。受信完了と内容正常は別だ。届いたものを検証しろ。';
- if(choice.id==='wait-vendor')return '同じ相手を待っているだけだな。他の連絡経路は確認したか？';
- if(choice.id==='resend-file')return 'ファイルが入れ替わった。前の検証結果は使えない。新しい実物で確認し直せ。';
- if(choice.id==='release-lock')return '保持元担当の確認と解除は取れた。更新0件も確認したうえで、再実行の承認を取り直せ。';
- if(choice.id==='critic-approval')return '無能丸の一般論は承認じゃない。作業の根拠と対象をそろえて俺に確認しろ。';
- if(choice.id==='request-file')return '当日ファイルは届いたな。日付と件数、未処理の確認だ。届いたから即投入、はやるなよ。';
- if(choice.id==='initial')return '顧客への初報は入ったな。次は手を動かせ。確認が進んだら顧客にも共有しろ。社内だけで話を終わらせるなよ。';
- if(choice.id==='progress-report')return '確認済みと未確認を分けて伝えたな。残っている作業に戻れ。根拠のない約束は増やすなよ。';
- if(choice.id==='file-report'&&g.fileDamaged)return g.mismatchSeen?'不一致は顧客にも共有したな。データを勝手に補わず、連携元の正本を取り直せ。':'受信したという報告だな。次は内容検証だ。';
- if(choice.id==='file-report')return g.file?(g.approved.has('SALES_IMPORT')?'承認済みだ。対象を確認して再実行に進め。':g.facts.checked&&g.facts.history?'検証結果はそろっている。再実行の承認を取れ。':'到着の報告はいい。次はファイルと履歴の検証だ。'):'未着の報告だけで止まるな。連携元への確認と到着待ちの段取りを詰めろ。';
- if(choice.id==='complete')return g.ended?'復旧報告まで完了だな。対応は終わり。操作経緯と再発防止は、明日の報告書に残せ。':'復旧したって何を確認した？ 正常終了、件数、別系統。証拠がそろう前に顧客へ断言するな。';
- return '報告は見た。で、次の対応は？ 根拠と操作対象を明確にして進めろ。';
+ if(choice.id==='complete')return g.ended?'これで終わりなんだな。顧客に説明した内容、明日の報告書にも残しておけよ。':'復旧したって言い切って大丈夫なのか？ 顧客に聞き返されてるじゃないか。';
+ if(choice.id==='critic-approval')return '田山さんに聞いても、お前の判断は出てこないだろ。で、お前はどうしたいんだ？';
+ if(choice.id==='wait-vendor')return 'まだ待つのか？ 朝になって「連絡がつきませんでした」で通ると思ってる？';
+ if(choice.id==='request-file'&&!g.file)return 'つながらない？ それで終わりじゃないだろ。どうすんだ？';
+ if(choice.id==='resend-file'||choice.id==='escalate-file')return '届いたのは分かった。それで戻せるのか？ 今度は大丈夫なんだろうな。';
+ if(choice.id==='release-lock')return 'で、次はうまくいくのか？ さっきも大丈夫だと思ってやったんだろ。';
+ if(c.startsWith('check')&&g.fileDamaged)return 'また問題かよ。いつになったら戻せるんだ？ お前の見通しは？';
+ if(c.includes('session_locks'))return 'その説明で、俺が判断できると思うか？ どうしたいのかを言ってくれ。';
+ if(c==='job status SALES_SUMMARY'&&g.facts.count)return '確認は全部終わったんだな。それなら、いつ対応を終えられる？';
+ if(g.recovered)return '戻ったんだな？ 顧客に大丈夫だと言えるのか。あとから違いましたじゃ困るぞ。';
+ if(choice.channel==='customer')return '顧客にはそう説明したんだな。で、実際のところ間に合うのか？';
+ if(c.startsWith('tail')||c.startsWith('ls'))return '結果は見た。で、どうすんだ？ 俺が聞きたいのは、このあとどうするかだ。';
+ if(c.startsWith('check')||c.includes('batch_history'))return '確認したのは分かった。それで、やって大丈夫って言えるのか？';
+ return '報告は見た。で、どうすんだ？ お前の判断を聞いてるんだが。';
 }
 
 export function progressText(g){
@@ -210,11 +200,13 @@ export function nextChoices(g){
 
 function criticComment(g,choice){
  let text='';
- if(choice.id==='request-file')text='こういうのはコミュニケーション設計の問題なんですよね。早めに連携しておけば防げた話かなと。私は先方の連絡先は持っていませんが。';
- else if(choice.command?.startsWith('check')&&g.fileDamaged)text='全体で見れば1件だけですよね。手で補って先に進めるという選択肢もあると思いますよ。もちろん一般論ですが。';
- else if(choice.command==='job rerun SALES_IMPORT'&&g.lockEncountered&&!g.lockReleased)text='ファイルだけを見るのは少し視野が狭かったかもしれませんね。ロックの可能性も、私は頭にはありました。';
- else if(choice.id==='release-lock')text='やはり担当間の連携が肝でしたね。そこは私も最初から申し上げていたポイントです。';
+ if(choice.id==='request-file')text='連携障害は技術だけで片付かないんですよね。この現場では昔からそうです。誰にどう働きかけるかは、今の体制で決めていただければ。';
+ else if(choice.command?.startsWith('check')&&g.fileDamaged)text='件数差が小さくても、データの整合性という観点では軽視できませんね。どこまで確認すれば十分かは、今回の担当の方で判断いただく話ですが。';
+ else if(choice.command==='job rerun SALES_IMPORT'&&g.lockEncountered&&!g.lockReleased)text='ロック競合はこの構成だと起こり得ますね。過去にもありました。今回も同じかどうかは、私から断定する立場ではないですが。';
+ else if(choice.id==='release-lock')text='解除できたことと、再開して安全かは別の話なんですよね。その線引きは実際に対応されている方の判断かと。';
  else if(choice.id==='resend-file')text='再送は堅実ですね。ただ、もっと早くその判断ができたのでは、という振り返りは必要かと。';
  else if(g.actions%5===0)text='技術的には理解しますが、全体最適の観点が少し足りない印象です。具体策は現場の皆さんで詰めていただければ。';
- if(text){g.criticCount++;push(g,'internal','無能丸｜横断支援',text);}
+ if(text){g.criticCount++;push(g,'internal','田山｜ベテラン',text);}
 }
+
+export function messageSurface(message){return message.channel==='customer'?'customer':'teams';}
