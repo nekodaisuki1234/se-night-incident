@@ -22,7 +22,7 @@ function render(){
  const joined=!!g.managerEnding&&visible>g.endingStart;const members=['あなた','鬼塚','田山（シニアテクニカルスペシャリスト）','森',...(g.infraDeadline?['佐伯（インフラ）']:[]),...(joined?['一条（PM）']:[])];$('member-count').textContent=members.length+'人';$('member-list').textContent=members.join('\n');
  $('manager-blackout').hidden=!(g.managerEnding?.phase==='blackout'&&visible===g.timeline.length&&!resultRequested);$('manager-result').disabled=busy;
  renderClock();$('trust').value=g.trust;$('trust-num').textContent=g.trust;$('mental').value=g.mental;$('mental-num').textContent=g.mental;
- $('state').textContent=g.dispatch?(g.dispatch.phase==='travelling'?'操作停止 · 鬼塚がタクシーで移動中':'GAME OVER · 鬼塚が現場に到着'):g.secondary?'追加障害：ACCOUNT_SYNC 停止':g.recovered?'SALES_IMPORT · 正常終了':g.lockEncountered&&!g.lockReleased?'再実行失敗 · DBロック':g.fileDamaged&&g.mismatchSeen?'受信ファイル · 件数不一致':'SALES_IMPORT · 異常終了';
+ $('state').textContent=g.dispatch?(g.dispatch.phase==='travelling'?'操作停止 · 鬼塚がタクシーで移動中':'GAME OVER · 鬼塚が現場に到着'):g.secondary?'追加障害：ACCOUNT_SYNC 停止':g.recovered?'SALES_IMPORT · 正常終了':g.lockEncountered&&!g.lockReleased?(g.variant?.kind==='active-lock'?'SALES_IMPORT · DBロック':'再実行失敗 · DBロック'):g.fileDamaged&&g.mismatchSeen?'受信ファイル · 件数不一致':'SALES_IMPORT · 異常終了';
  $('objective').textContent=objectiveText(g);
  renderChoices();
  const near=document.documentElement.scrollHeight-window.scrollY-window.innerHeight<110;

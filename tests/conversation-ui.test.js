@@ -119,3 +119,21 @@ test('4回目のSQL後に方針三択を表示し、連打・再開でも方針�
  assert.equal(h.el('choices').children.length,3);const a=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('確認済みの事実と未確認事項を整理'));assert.ok(a);const at=h.run('g.minutes'),credit=h.run('g.trust');a.onclick();a.onclick();await h.drain();assert.equal(h.run('g.minutes'),at);assert.equal(h.run('g.trust'),credit);assert.equal(h.run('g.facts.files'),false);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('受信ファイルの一覧')));
  const saved=h.run('serializeGame(g)'),resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.historyReview.resolved'),true);assert.equal(resumed.run('g.trust'),credit);assert.equal(resumed.el('choices').children.length,3);
 });
+
+// Only the heading varies: exercise the real renderer, including restored saves.
+const lockHeadingCases=[
+ ['初回ログ前',"g=createGame({scenario:'active-lock'});start(g);",'SALES_IMPORT · 異常終了'],
+ ['初回ログ後・未再実行',"g=createGame({scenario:'active-lock'});start(g);execute(g,'tail -n 30 /logs/SALES_IMPORT.log');",'SALES_IMPORT · DBロック'],
+ ['ロック解放後',"g=createGame({scenario:'active-lock'});start(g);execute(g,'tail -n 30 /logs/SALES_IMPORT.log');g.lockReleased=true;",'SALES_IMPORT · 異常終了'],
+ ['正常終了がロック表示より優先',"g=createGame({scenario:'active-lock'});start(g);execute(g,'tail -n 30 /logs/SALES_IMPORT.log');g.recovered=true;g.recoveredAt=g.minutes;",'SALES_IMPORT · 正常終了'],
+ ['従来のリラン失敗',"g=createGame();start(g);g.firstReportInstruction=false;g.file=true;g.facts.checked=true;g.approved.add('SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');",'再実行失敗 · DBロック'],
+];
+for(const [name,setup,expected] of lockHeadingCases)test('DBロック見出し：'+name+'、保存復元でも一致',()=>{
+ const h=ui();h.run(setup+'visible=g.timeline.length;render();');assert.equal(h.el('state').textContent,expected);
+ const resumed=ui(h.run('serializeGame(g)'));assert.equal(resumed.el('state').textContent,expected);
+});
+test('scenario/variantのない旧セーブは従来のDBロック見出しを維持',()=>{
+ const g=engine.createGame();engine.start(g);g.lockEncountered=true;
+ const old=JSON.parse(engine.serializeGame(g));delete old.game.scenario;delete old.game.variant;
+ const h=ui(JSON.stringify(old));assert.equal(h.el('state').textContent,'再実行失敗 · DBロック');
+});
