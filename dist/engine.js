@@ -316,7 +316,7 @@ function beginDispatch(g,operation,reason,kind){
  // Departure owns the ending: dismiss the urgent-call branch and freeze all work.
  g.call=false;g.callReason=null;
  event(g,'鬼塚が出動：'+operation+'／'+reason);
- push(g,'internal','鬼塚｜リーダー','今の操作について、'+reason);
+ if(kind==='repeated-unauthorized')push(g,'internal','鬼塚｜リーダー','承認前に実行するなと伝えた後も、SALES_IMPORTを無断で再実行したな。これ以上、操作を任せ続ける判断はできない。');
  push(g,'internal','鬼塚｜リーダー','……もういい。そこから何も触るな。');
  push(g,'internal','鬼塚｜リーダー','確認だけのつもりでも操作するな。画面はそのままにしておけ。');
  push(g,'internal','鬼塚｜リーダー','今からタクシーで向かう。');
