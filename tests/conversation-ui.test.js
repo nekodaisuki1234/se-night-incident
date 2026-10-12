@@ -44,3 +44,9 @@ test('Zoom画面は操作結果の表示後に開き、通常三択を閉じ会�
  const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");assert.equal(h.el('meeting').open,false);await h.drain();assert.equal(h.el('meeting').open,true);assert.equal(h.el('meeting-choices').children.length,3);assert.equal(h.el('choices').children.length,0);const clock=h.run('g.clock');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.run('g.clock'),clock);
  h.el('meeting-choices').children[0].onclick();await h.drain();h.el('meeting-choices').children[0].onclick();await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,3);assert.equal(h.run('g.mismatchSeen'),true);
 });
+
+test('マネージャー入力中の後に暗転し結果ボタンを押すまで振り返りを表示しない',async()=>{
+ const h=ui();h.run("execute(g,'job stop ACCOUNT_SYNC');playReplies();");assert.equal(h.el('result').open,false);assert.equal(h.el('member-count').textContent,'4人');let typingSeen=false;
+ for(let i=0;i<300&&h.run('busy');i++){const fn=h.timeouts.shift();if(fn)fn();await Promise.resolve();if(!h.el('typing').hidden&&h.el('typing-name').textContent==='マネージャーが入力中…')typingSeen=true;}
+ assert.ok(typingSeen);assert.equal(h.run('busy'),false);assert.equal(h.el('member-count').textContent,'5人');assert.match(h.el('member-list').textContent,/マネージャー/);assert.equal(h.el('manager-blackout').hidden,false);assert.equal(h.el('result').open,false);h.el('manager-result').onclick();assert.equal(h.el('result').open,true);assert.equal(h.el('manager-blackout').hidden,true);assert.match(h.el('result-summary').textContent,/job stop ACCOUNT_SYNC.*口座同期/);
+});
