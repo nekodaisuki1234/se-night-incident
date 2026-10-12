@@ -95,3 +95,14 @@ test('顧客了承の表示中に連打・再開しても鬼塚の未了承返�
  const b=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('顧客へ正常終了'));assert.ok(b);const before=h.run('g.actions');b.onclick();b.onclick();const saved=h.run('serializeGame(g)');await h.drain();assert.equal(h.run('g.actions'),before+1);assert.equal(h.run('g.customerCompleted'),true);assert.equal(h.run("g.timeline.filter(m=>m.text.startsWith('顧客の了承は取れたな')).length"),1);assert.equal(h.run("g.timeline.some(m=>m.text.includes('まだ完了として受け取れない'))"),false);
  const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.actions'),before+1);assert.equal(resumed.run("g.timeline.filter(m=>m.text.startsWith('顧客の了承は取れたな')).length"),1);assert.ok(resumed.el('choices').children.some(b=>b.children[1]?.textContent.includes('引き継ぎ事項を記録')));
 });
+
+test('PM結果には信用20・独立したメンタル・操作権限停止と後日談を表示する',async()=>{
+ const h=ui();h.run("execute(g,'job stop ACCOUNT_SYNC');playReplies();");await h.drain();h.el('manager-result').onclick();
+ const texts=h.el('result-stats').children.map(e=>e.textContent);assert.ok(texts.includes('20 / 100'));assert.ok(texts.includes('80 / 100'));assert.ok(texts.includes('本番操作権限停止／担当継続不可'));assert.ok(texts.includes('翌朝、本番環境の操作権限が停止された。以後の対応は別の担当者に引き継がれた。'));
+ const saved=h.run('serializeGame(g)');const resumed=ui(saved);await resumed.drain();resumed.el('manager-result').onclick();assert.deepEqual(resumed.el('result-stats').children.map(e=>e.textContent),texts);
+});
+
+test('通常出勤の結果画面も報告担当変更と単独報告見送りを保持する',async()=>{
+ const h=ui();h.run("g.upperReporter='onizuka';changeTrust(g,0);g.recovered=true;g.recoveredAt=290;g.minutes=340;g.facts.summary=true;g.facts.count=true;g.impactReviewed=true;g.internalReported=true;g.customerCompleted=true;send(g,'internal','記録','handover');playReplies();");
+ await h.drain();h.el('success-result').onclick();const texts=h.el('result-stats').children.map(e=>e.textContent);assert.equal(h.el('result-title').textContent,'END：通常出勤');assert.ok(texts.includes('成功'));assert.ok(texts.includes('鬼塚へ担当変更'));assert.ok(texts.includes('現地対応を継続。単独での上席報告は当面見送り。'));assert.ok(texts.includes('60 / 100'));
+});

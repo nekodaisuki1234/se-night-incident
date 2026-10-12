@@ -141,7 +141,7 @@ test('顧客の指摘を社内へ共有してから遠隔の田山が評論す�
 
 test('別ジョブ専用台詞は誤停止だけに一度出し長い叱責を重ねない',()=>{
  const text='普段トロいのに、こういう時には慎重さに欠くのはなんでなんだ？';
- const g=game();execute(g,'job stop ACCOUNT_SYNC');execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.timeline.filter(m=>m.text===text).length,1);assert.equal(g.trust,78);assert.equal(g.mental,80);assert.equal(g.dispatch,null);assert.ok(g.managerEnding);assert.ok(!g.timeline.some(m=>m.text.includes('待て。なんでACCOUNT_SYNC')));
+ const g=game();execute(g,'job stop ACCOUNT_SYNC');execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.timeline.filter(m=>m.text===text).length,1);assert.equal(g.trust,20);assert.equal(g.mental,80);assert.equal(g.dispatch,null);assert.ok(g.managerEnding);assert.ok(!g.timeline.some(m=>m.text.includes('待て。なんでACCOUNT_SYNC')));
  for(const cmd of ['job rerun SALES_IMPORT','tail -n 30 /logs/SALES_IMPORT.log']){const h=game();execute(h,cmd);assert.ok(!h.timeline.some(m=>m.text===text));}
 });
 test('到着で終了を確定し対面の台詞と沈黙だけで専用エンドを構成する',()=>{
@@ -239,12 +239,12 @@ test('しどろもどろでも一度立て直せば説明役を維持する',()=
  const g=meetingGame();meetingAnswer(g,'meeting-vague');assert.equal(g.meeting.phase,'repair');assert.match(g.timeline.at(-1).text,/主語がねえんだよ/);meetingAnswer(g,'meeting-good');assert.equal(g.meeting.takenOver,false);assert.equal(g.trust,100);assert.equal(g.mental,100);finishMeeting(g);assert.equal(g.upperReporter,'player');
 });
 test('説明交代は既知の事実だけで収め現地作業と顧客対応を残す',()=>{
- const g=meetingGame();meetingAnswer(g,'meeting-vague');meetingAnswer(g,'meeting-vague');assert.equal(g.upperReporter,'onizuka');assert.equal(g.trust,94);assert.equal(g.mental,92);assert.equal(g.dispatch,null);assert.equal(g.ended,false);assert.equal(g.recovered,false);assert.equal(g.firstReportDelegated,false);const summary=g.timeline.find(m=>m.text.startsWith('……私から整理します'));assert.match(summary.text,/1件欠損/);assert.match(summary.text,/次に連携元に完全なファイルの再送/);assert.doesNotMatch(summary.text,/SESSION|ロック解除|承認済み|復旧しました/);assert.equal(g.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);finishMeeting(g);assert.equal(g.timeline.at(-2).text,'【個別】お前、何がなんだかわからないままやってるから、簡単な報告一つもできねえんだぞ');assert.equal(g.timeline.at(-1).text,'【個別】今後障害起きたら全部対応しろよ');assert.equal(g.approved.size,0);
+ const g=meetingGame();meetingAnswer(g,'meeting-vague');meetingAnswer(g,'meeting-vague');assert.equal(g.upperReporter,'onizuka');assert.equal(g.trust,60);assert.equal(g.mental,85);assert.equal(g.dispatch,null);assert.equal(g.ended,false);assert.equal(g.recovered,false);assert.equal(g.firstReportDelegated,false);const summary=g.timeline.find(m=>m.text.startsWith('……私から整理します'));assert.match(summary.text,/1件欠損/);assert.match(summary.text,/次に連携元に完全なファイルの再送/);assert.doesNotMatch(summary.text,/SESSION|ロック解除|承認済み|復旧しました/);assert.equal(g.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);finishMeeting(g);assert.equal(g.timeline.at(-2).text,'【個別】お前、何がなんだかわからないままやってるから、簡単な報告一つもできねえんだぞ');assert.equal(g.timeline.at(-1).text,'【個別】今後障害起きたら全部対応しろよ');assert.equal(g.approved.size,0);
  for(const step of ['resend-file','check /data/inbox/sales_20261012.csv',"SELECT * FROM batch_history WHERE business_date = '20261012';",'approve','job rerun SALES_IMPORT',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';",'release-lock','approve','job rerun SALES_IMPORT','job status SALES_SUMMARY',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';",'impact-review','internal-complete','complete','handover'])pick(g,step);cleanup(g);assert.equal(g.result,'END：通常出勤');assert.equal(g.events.filter(e=>e.text.startsWith('部長から社内Zoom')).length,1);
 });
 test('根拠のない確約は一度だけ評価し、訂正すれば説明交代を回避できる',()=>{
- const g=meetingGame();meetingAnswer(g,'meeting-claim');assert.equal(g.trust,100);meetingAnswer(g,'meeting-good');assert.equal(g.trust,92);assert.equal(g.mental,96);assert.equal(g.meeting.takenOver,false);assert.equal(g.correctionNeeded,undefined);assert.equal(g.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);
- const h=meetingGame();meetingAnswer(h,'meeting-claim');meetingAnswer(h,'meeting-claim');assert.equal(h.trust,92);assert.equal(h.mental,92);assert.equal(h.meeting.takenOver,true);assert.equal(h.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);
+ const g=meetingGame();meetingAnswer(g,'meeting-claim');assert.equal(g.trust,90);meetingAnswer(g,'meeting-good');assert.equal(g.trust,90);assert.equal(g.mental,96);assert.equal(g.meeting.takenOver,false);assert.equal(g.correctionNeeded,undefined);assert.equal(g.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);
+ const h=meetingGame();meetingAnswer(h,'meeting-claim');meetingAnswer(h,'meeting-claim');assert.equal(h.trust,60);assert.equal(h.mental,85);assert.equal(h.meeting.takenOver,true);assert.equal(h.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);
 });
 test('会議中の連打・通常操作・時間経過を拒否し再開で発言と減点を重複しない',()=>{
  let g=meetingGame();const stale=nextChoices(g)[1];chooseAction(g,stale);const snapshot=serializeGame(g);chooseAction(g,stale);execute(g,'job stop ACCOUNT_SYNC');requestApproval(g,'SALES_IMPORT');send(g,'customer','復旧','complete');answerCall(g,'promise');tick(g,500);assert.equal(serializeGame(g),snapshot);g=restoreGame(serializeGame(g));assert.equal(g.meeting.phase,'repair');assert.equal(serializeGame(g),snapshot);meetingAnswer(g,'meeting-vague');g=restoreGame(serializeGame(g));assert.equal(g.meeting.phase,'closing');assert.deepEqual(nextChoices(g),[]);finishMeeting(g);const closed=serializeGame(g);finishMeeting(g);assert.equal(serializeGame(g),closed);assert.equal(g.events.filter(e=>e.text.startsWith('Zoom報告')).length,1);execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.dispatch,null);assert.ok(g.managerEnding);tick(g,3);assert.equal(g.result,'二次障害');
@@ -257,7 +257,7 @@ test('旧セーブには会議状態を補い、ロック段階でも既知の�
 });
 
 test('二次障害は敗北を即時確定しマネージャーの発言なしで専用演出だけを追加する',()=>{
- const g=game();execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.ended,true);assert.equal(g.result,'二次障害');assert.equal(g.dispatch,null);assert.equal(g.call,false);assert.equal(g.callReason,null);assert.equal(g.trust,78);assert.equal(g.mental,80);assert.equal(g.mistakes,1);assert.deepEqual(g.timeline.slice(g.endingStart).map(m=>m.text),['鬼塚が一条（PM）を追加しました','過去の履歴を全て共有しました','@一条（PM） こちらです','一条（PM）が入力中…','GAME OVER']);assert.ok(!g.timeline.some(m=>m.sender==='一条（PM）'||m.text.includes('タクシー')));assert.match(g.managerEnding.impact,/口座同期を停止/);assert.doesNotMatch(g.managerEnding.impact,/二重処理|データ破損/);assert.deepEqual(nextChoices(g),[]);
+ const g=game();execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.ended,true);assert.equal(g.result,'二次障害');assert.equal(g.dispatch,null);assert.equal(g.call,false);assert.equal(g.callReason,null);assert.equal(g.trust,20);assert.equal(g.mental,80);assert.equal(g.mistakes,1);assert.deepEqual(g.timeline.slice(g.endingStart).map(m=>m.text),['鬼塚が一条（PM）を追加しました','過去の履歴を全て共有しました','@一条（PM） こちらです','一条（PM）が入力中…','GAME OVER']);assert.ok(!g.timeline.some(m=>m.sender==='一条（PM）'||m.text.includes('タクシー')));assert.match(g.managerEnding.impact,/口座同期を停止/);assert.doesNotMatch(g.managerEnding.impact,/二重処理|データ破損/);assert.deepEqual(nextChoices(g),[]);
 });
 test('マネージャー演出と暗転を再開しても敗北を解除せず通知・評価を重複しない',()=>{
  let g=game();execute(g,'job stop ACCOUNT_SYNC');g.endingVisible=g.endingStart+2;g=restoreGame(serializeGame(g));const before=serializeGame(g);tick(g,1000);execute(g,'job rerun ACCOUNT_SYNC');send(g,'customer','報告','initial');requestApproval(g,'ACCOUNT_SYNC');answerCall(g,'promise');assert.equal(serializeGame(g),before);g.managerEnding.phase='blackout';g.endingVisible=g.timeline.length;g=restoreGame(serializeGame(g));assert.equal(g.ended,true);assert.equal(g.managerEnding.phase,'blackout');assert.equal(g.timeline.filter(m=>m.text==='過去の履歴を全て共有しました').length,1);assert.equal(g.events.filter(e=>e.text==='二次障害').length,1);const fresh=createGame();assert.equal(fresh.managerEnding,null);assert.equal(fresh.ended,false);
@@ -302,4 +302,30 @@ test('調査・報告・検証は10分、再実行は15分進む',async()=>{
  execute(g,'check /data/inbox/sales_20261012.csv');assert.equal(g.minutes,117);
  execute(g,'job rerun SALES_IMPORT');assert.equal(g.minutes,132);
  const h=restoreGame(serializeGame(g));assert.equal(h.minutes,132);
+});
+
+
+test('Zoom確約は初回だけ即時減点し、保存再開・古い選択・加点でも責任上限を維持',async()=>{
+ const {changeTrust,trustLimit,resultAssessment}=await import('../dist/engine.js');
+ let g=meetingGame();const first=nextChoices(g).find(c=>c.id==='meeting-claim');chooseAction(g,first);
+ assert.equal(g.trust,90);assert.equal(g.mental,96);assert.deepEqual(g.meetingAssessment,{trust:10,mental:4});
+ g=restoreGame(serializeGame(g));const before=serializeGame(g);chooseAction(g,first);assert.equal(serializeGame(g),before);
+ meetingAnswer(g,'meeting-claim');assert.equal(g.trust,60);assert.equal(g.mental,85);assert.deepEqual(g.meetingAssessment,{trust:30,mental:15});
+ finishMeeting(g);const saved=serializeGame(g);g=restoreGame(saved);assert.equal(serializeGame(g),saved);changeTrust(g,100);assert.equal(g.trust,60);assert.equal(trustLimit(g),60);
+ assert.ok(resultAssessment(g).some(([k,v])=>k==='上席報告'&&v==='鬼塚へ担当変更'));assert.equal(g.dispatch,null);assert.equal(g.ended,false);
+ const fresh=createGame();assert.equal(trustLimit(fresh),100);assert.deepEqual(fresh.meetingAssessment,{trust:0,mental:0});assert.equal(fresh.upperReporter,'player');assert.equal(fresh.managerEnding,null);
+});
+test('旧セーブの説明交代・PM終了は上限のみ補正し、過去の減点を再徴収しない',async()=>{
+ const {changeTrust,resultAssessment}=await import('../dist/engine.js');
+ for(const pm of [false,true]){
+  const g=meetingGame();meetingAnswer(g,'meeting-claim');meetingAnswer(g,'meeting-claim');finishMeeting(g);if(pm)execute(g,'job stop ACCOUNT_SYNC');
+  const data=JSON.parse(serializeGame(g));delete data.game.evaluationVersion;delete data.game.meetingAssessment;data.game.trust=pm?78:92;data.game.mental=pm?80:92;
+  const h=restoreGame(JSON.stringify(data));assert.ok(h);assert.equal(h.trust,pm?20:60);assert.equal(h.mental,pm?80:92);assert.equal(h.timeline.length,g.timeline.length);assert.equal(h.events.length,g.events.length);
+  const saved=serializeGame(h);assert.equal(serializeGame(restoreGame(saved)),saved);changeTrust(h,100);assert.equal(h.trust,pm?20:60);
+  if(pm){assert.ok(resultAssessment(h).some(([k,v])=>k==='処遇'&&v==='本番操作権限停止／担当継続不可'));assert.equal(h.dispatch,null);}
+ }
+});
+test('旧セーブの会議途中で確約済みなら初回評価を一度適用し、訂正で担当を維持',()=>{
+ const g=meetingGame();meetingAnswer(g,'meeting-claim');const data=JSON.parse(serializeGame(g));delete data.game.evaluationVersion;delete data.game.meetingAssessment;data.game.trust=100;data.game.mental=100;
+ let h=restoreGame(JSON.stringify(data));assert.equal(h.trust,90);h=restoreGame(serializeGame(h));meetingAnswer(h,'meeting-good');assert.equal(h.trust,90);assert.equal(h.mental,96);assert.equal(h.upperReporter,'player');assert.equal(h.meeting.takenOver,false);
 });
