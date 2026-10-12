@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import * as engine from '../dist/engine.js';
 
 // Execute the actual UI module against a small DOM/timer harness: no browser timing assumptions.
-function ui(){
+function ui(saved=null){
  class Element {
   constructor(){this.children=[];this.open=false;this.hidden=false;this.disabled=false;this.scrollHeight=100;this.style={setProperty(){}};}
   append(...children){this.children.push(...children);}
@@ -16,11 +16,11 @@ function ui(){
  const elements=new Map(),listeners={},intervals=[],timeouts=[];
  const el=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
  const document={hidden:false,documentElement:new Element(),getElementById:el,querySelector:el,querySelectorAll:()=>[],createElement:()=>new Element(),addEventListener:(name,fn)=>{listeners[name]=fn;}};
- const sandbox={...engine,document,window:{scrollY:0,innerHeight:800,scrollTo(){},addEventListener(){},confirm:()=>false},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},location:{reload(){}},ResizeObserver:class{observe(){}},Date,console,requestAnimationFrame(){},setInterval(fn){intervals.push(fn);},setTimeout(fn){timeouts.push(fn);}};
+ const sandbox={...engine,document,window:{scrollY:0,innerHeight:800,scrollTo(){},addEventListener(){},confirm:()=>false},localStorage:{getItem:key=>key.endsWith("-sound")?null:saved,setItem(){},removeItem(){}},location:{reload(){}},ResizeObserver:class{observe(){}},Date,console,requestAnimationFrame(){},setInterval(fn){intervals.push(fn);},setTimeout(fn){timeouts.push(fn);}};
  const context=vm.createContext(sandbox);
  vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*\n/,''),context);
  const run=code=>vm.runInContext(code,context);
- run("g=createGame({setbacks:false});start(g);g.firstReportInstruction=false;send(g,'internal',internalStatusText(g),'internal-report');g.callSeen=true;visible=g.timeline.length;$('intro').close();render();");
+ if(!saved)run("g=createGame({setbacks:false});start(g);g.firstReportInstruction=false;send(g,'internal',internalStatusText(g),'internal-report');g.callSeen=true;visible=g.timeline.length;$('intro').close();render();");
  return {run,el,intervals,timeouts,listeners,async drain(){for(let i=0;i<300&&run('busy');i++){const fn=timeouts.shift();if(fn)fn();await Promise.resolve();}assert.equal(run('busy'),false);}};
 }
 test('行動の返答を表示中は時計を止め、要求を返答後に表示してから三択を更新する',async()=>{
@@ -56,12 +56,12 @@ test('返答演出中はヘッダー時刻と残り時間が進まない',()=>{
 });
 
 test('期限終了は会話を読み終えてから結果を手動表示する',async()=>{
- const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');visible=g.timeline.length;render();g.minutes=284;execute(g,'job status');playReplies();");await h.drain();assert.equal(h.el('deadline').textContent,'4時45分の復旧期限を超過');assert.equal(h.el('result').open,false);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);assert.match(h.el('result-summary').textContent,/顛末書.*1ヶ月のなぜなぜ分析/);
+ const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');visible=g.timeline.length;render();g.minutes=299;execute(g,'job status');playReplies();");await h.drain();assert.equal(h.el('deadline').textContent,'05:00の復旧期限を超過');assert.equal(h.el('result').open,false);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);assert.match(h.el('result-summary').textContent,/顛末書.*1ヶ月のなぜなぜ分析/);
 });
 
 test('Zoomの選択で期限を超えたら会議画面を閉じて結果へ進める',async()=>{
  const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");await h.drain();assert.equal(h.el('meeting').open,true);
- h.run('g.minutes=284;');h.el('meeting-choices').children[0].onclick();await h.drain();assert.equal(h.run('g.deadlineEnded'),true);assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,1);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);
+ h.run('g.minutes=299;');h.el('meeting-choices').children[0].onclick();await h.drain();assert.equal(h.run('g.deadlineEnded'),true);assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,1);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);
 });
 
 
@@ -75,4 +75,17 @@ test('Zoomのpointerupとclickの間に再描画しても押したボタンを�
  const next=h.el('meeting-choices').children[0];assert.notEqual(next,button);
  h.run('render();');assert.equal(h.el('meeting-choices').children[0],next);
  next.onclick();await h.drain();h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);
+});
+
+
+test('通常出勤エンドは順番に暗転し手動で結果へ進み復旧・残処理時刻を表示する',async()=>{
+ const h=ui();h.run("g.recovered=true;g.recoveredAt=290;g.minutes=340;g.facts.summary=true;g.facts.count=true;g.impactReviewed=true;g.internalReported=true;g.customerCompleted=true;send(g,'internal','対応記録を整理しました','handover');playReplies();");
+ assert.equal(h.el('result').open,false);await h.drain();assert.equal(h.el('success-blackout').hidden,false);assert.equal(h.el('success-title').textContent,'END：通常出勤');assert.equal(h.el('result').open,false);
+ h.el('success-result').onclick();assert.equal(h.el('result').open,true);assert.equal(h.el('success-blackout').hidden,true);assert.equal(h.el('result-title').textContent,'END：通常出勤');const texts=h.el('result-stats').children.map(e=>e.textContent);assert.ok(texts.includes('04:50'));assert.ok(texts.includes('05:50'));
+});
+
+
+test('成功エンドの暗転途中を保存して再開しても台詞が重複せず結果へ進める',async()=>{
+ const h=ui();h.run("g.recovered=true;g.recoveredAt=290;g.minutes=340;g.facts.summary=true;g.facts.count=true;g.impactReviewed=true;g.internalReported=true;g.customerCompleted=true;send(g,'internal','記録','handover');g.endingVisible=g.endingStart+3;");
+ const saved=h.run('serializeGame(g)'),n=h.run('g.timeline.length');const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.timeline.length'),n);assert.equal(resumed.el('success-blackout').hidden,false);assert.equal(resumed.el('result').open,false);resumed.el('success-result').onclick();assert.equal(resumed.el('result').open,true);
 });
