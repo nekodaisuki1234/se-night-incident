@@ -654,7 +654,10 @@ function closeMeeting(g,takenOver){
 }
 export function finishMeeting(g){
  if(g.meeting?.phase!=='closing')return;g.meeting.phase='done';g.infraMenu=false;
- if(g.meeting.takenOver)push(g,'internal','鬼塚｜リーダー','【個別】次から説明する前に、俺に内容を送って。上への報告は俺がする。お前は現地作業と、確認結果の共有を頼む。');
+ if(g.meeting.takenOver){
+  push(g,'internal','鬼塚｜リーダー','【個別】お前、何がなんだかわからないままやってるから、簡単な報告一つもできねえんだぞ');
+  push(g,'internal','鬼塚｜リーダー','【個別】今後障害起きたら全部対応しろよ');
+ }
 }
 
 function beginManagerEnding(g,operation,impact){
