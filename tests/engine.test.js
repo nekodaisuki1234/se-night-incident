@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame,start,execute,send,requestApproval,tick,answerCall} from '../dist/engine.js';
+import {createGame,start,execute,send,requestApproval,tick,answerCall,parseCommandReport} from '../dist/engine.js';
 function game(){const g=createGame();start(g);return g;}
 function prepare(g){execute(g,'tail -n 30 /logs/SALES_IMPORT.log');execute(g,'ls -l /data/inbox');send(g,'internal','確認依頼','request-file');execute(g,'check /data/inbox/sales_20261012.csv');execute(g,"SELECT * FROM batch_history WHERE business_date = '20261012';");}
 function verify(g){execute(g,'job status SALES_SUMMARY');execute(g,"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';");}
@@ -13,3 +13,6 @@ test('定型文とコマンドの連打で猶予を無限延長できない',()=
 test('電話で根拠のない復旧時刻を約束すると信用が下がる',()=>{const g=game();tick(g,26);assert.equal(g.call,true);answerCall(g,'promise');assert.equal(g.trust,85);assert.equal(g.call,false);});
 test('自由入力の否定文ではファイル到着やクリアを捏造しない',()=>{const g=game();send(g,'internal','当日ファイルの確認を連携元にお願いしますとは言っていない');assert.equal(g.file,false);send(g,'customer','復旧していない、件数一致していない');assert.equal(g.ended,false);});
 test('処理済みの再実行と終了後の操作',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');assert.equal(g.result,'対応交代');const actions=g.actions;execute(g,'job stop ACCOUNT_SYNC');tick(g,500);assert.equal(g.actions,actions);assert.equal(g.secondary,false);});
+test('チャットの操作報告が実際の調査として一度だけ反映される',()=>{const g=game();send(g,'internal','「tail -n 30 /logs/SALES_IMPORT.log」を入力しました。');assert.equal(g.facts.log,true);assert.equal(g.actions,1);assert.equal(g.timeline.filter(m=>m.channel==='operations'&&m.sender==='あなた').length,1);assert.ok(g.timeline.some(m=>m.sender==='操作結果'&&m.text.includes('INPUT FILE NOT FOUND')));});
+test('チャットからSQLと復旧操作を実行できる',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');send(g,'internal','job rerun SALES_IMPORTを入力しました');send(g,'internal','job status SALES_SUMMARYを入力しました');send(g,'internal',"「SELECT COUNT(*) FROM sales WHERE business_date = '20261012';」を入力しました。");send(g,'customer','復旧報告','complete');assert.equal(g.result,'模範復旧');});
+test('未実施・曖昧な報告はコマンド実行として扱わない',()=>{for(const s of ['job stop ACCOUNT_SYNCを入力していません','コマンドを入力しました','job rerun SALES_IMPORTを実行したい'])assert.equal(parseCommandReport(s),null);});
