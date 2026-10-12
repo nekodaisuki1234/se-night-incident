@@ -274,3 +274,10 @@ test('一次報を先に送れば代送・叱責はなく正常復旧まで進�
 test('優先指示がない旧セーブのログ調査には代送も叱責も追加しない',()=>{
  const g=createGame({setbacks:false});start(g);const saved=JSON.parse(serializeGame(g));delete saved.game.firstReportInstruction;delete saved.game.firstReportDelegated;saved.game.timeline=saved.game.timeline.filter(m=>!m.text.startsWith('調査の前に'));const h=restoreGame(JSON.stringify(saved));execute(h,'tail -n 30 /logs/SALES_IMPORT.log');assert.equal(h.firstReportDelegated,false);assert.equal(h.reported,false);assert.equal(h.facts.log,true);
 });
+
+test('経過時計は会議や報告中も進み報告遅延・作業判定には触れない',async()=>{
+ const {advanceIncidentTime,deadlineText}=await import('../dist/engine.js');const g=meetingGame();const before={minutes:g.minutes,clock:g.clock,tech:g.techIdle,reply:g.replyIdle,trust:g.trust};advanceIncidentTime(g,6);assert.equal(g.minutes,before.minutes+1);assert.equal(g.clock,before.clock);assert.equal(g.techIdle,before.tech);assert.equal(g.replyIdle,before.reply);assert.equal(g.trust,before.trust);assert.match(deadlineText(g),/03:00まで あと/);meetingAnswer(g,'meeting-good');assert.equal(g.minutes,before.minutes+2);
+});
+test('3時までの残り時間と超過を表示し新しい敗北条件は作らない',async()=>{
+ const {advanceIncidentTime,deadlineText}=await import('../dist/engine.js');const g=createGame();start(g);assert.equal(deadlineText(g),'03:00まで あと1時間43分');g.minutes=179;advanceIncidentTime(g,6);assert.equal(deadlineText(g),'03:00 · 復旧期限です');advanceIncidentTime(g,6);assert.equal(deadlineText(g),'03:00から 0時間01分超過');assert.equal(g.ended,false);assert.equal(g.trust,100);assert.equal(g.mental,100);g.incidentSeconds=25;const h=restoreGame(serializeGame(g));assert.equal(h.incidentSeconds,25);h.ended=true;const before=serializeGame(h);advanceIncidentTime(h,60);assert.equal(serializeGame(h),before);
+});

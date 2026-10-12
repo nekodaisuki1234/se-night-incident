@@ -50,3 +50,7 @@ test('マネージャー入力中の後に暗転し結果ボタンを押すま�
  for(let i=0;i<300&&h.run('busy');i++){const fn=h.timeouts.shift();if(fn)fn();await Promise.resolve();if(!h.el('typing').hidden&&h.el('typing-name').textContent==='マネージャーが入力中…')typingSeen=true;}
  assert.ok(typingSeen);assert.equal(h.run('busy'),false);assert.equal(h.el('member-count').textContent,'5人');assert.match(h.el('member-list').textContent,/マネージャー/);assert.equal(h.el('manager-blackout').hidden,false);assert.equal(h.el('result').open,false);h.el('manager-result').onclick();assert.equal(h.el('result').open,true);assert.equal(h.el('manager-blackout').hidden,true);assert.match(h.el('result-summary').textContent,/job stop ACCOUNT_SYNC.*口座同期/);
 });
+
+test('返答演出中もヘッダー時刻と期限が進み、報告遅延時計は止まる',()=>{
+ const h=ui();h.run('busy=true;g.minutes=77;g.incidentSeconds=0;last=Date.now()-2000;');const clock=h.run('g.clock');h.intervals[0]();assert.ok(h.run('g.incidentSeconds')>=19);assert.equal(h.run('g.clock'),clock);assert.match(h.el('time').textContent,/01:17:2/);assert.match(h.el('deadline').textContent,/あと1時間43分/);
+});

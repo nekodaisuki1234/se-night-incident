@@ -8,7 +8,7 @@ export const commands = [
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
 export function createGame({setbacks=true}={}) {
- return {firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -617,4 +617,16 @@ function delegateFirstReport(g,before){
  push(g,'customer','鬼塚｜リーダー','【一次報】売上取込の異常終了と後続集計の待機を確認しています。原因・影響件数・復旧見込みは確認中です。確認できた状況から続報します。');
  push(g,'customer','高橋｜顧客','一次報を受領しました。確認が進み次第、続報をお願いします。');
  event(g,'一次報を優先する指示より先にログを確認したため、鬼塚が顧客へ一次報を代送（ログ調査は正常実施）');
+}
+
+// Deadline clock is separate from response-idle timers: dialogue consumes time without idle penalties.
+export function advanceIncidentTime(g,seconds){
+ if(!g.started||g.ended||g.dispatch||!Number.isFinite(seconds)||seconds<=0)return;
+ const total=(g.incidentSeconds||0)+seconds*10;
+ g.minutes+=Math.floor(total/60);g.incidentSeconds=total%60;
+}
+export function deadlineText(g){
+ const remaining=180*60-(g.minutes*60+(g.incidentSeconds||0));
+ const minutes=Math.ceil(Math.abs(remaining)/60);
+ return remaining>0?'03:00まで あと'+Math.floor(minutes/60)+'時間'+String(minutes%60).padStart(2,'0')+'分':remaining===0?'03:00 · 復旧期限です':'03:00から '+Math.floor(minutes/60)+'時間'+String(minutes%60).padStart(2,'0')+'分超過';
 }

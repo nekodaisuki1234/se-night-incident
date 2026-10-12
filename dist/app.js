@@ -1,4 +1,4 @@
-import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame,meetingActive,finishMeeting} from './engine.js';
+import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame,meetingActive,finishMeeting,advanceIncidentTime,deadlineText} from './engine.js';
 const $=id=>document.getElementById(id);let g=createGame(),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null;
 function item(tag,text,cls){const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;}
 function ring(){if(!sound||!audio)return;try{const now=audio.currentTime;for(let i=0;i<4;i++){const o=audio.createOscillator(),v=audio.createGain();o.frequency.value=i%2?660:880;v.gain.setValueAtTime(0,now+i*.2);v.gain.linearRampToValueAtTime(.04,now+i*.2+.02);v.gain.linearRampToValueAtTime(0,now+i*.2+.15);o.connect(v);v.connect(audio.destination);o.start(now+i*.2);o.stop(now+i*.2+.16);}}catch{}}
@@ -9,10 +9,11 @@ function enableAudio(){if(!sound)return;try{if(!audio)audio=new (window.AudioCon
 document.addEventListener('pointerdown',enableAudio,{passive:true});
 const labels={internal:'社内',customer:'顧客メール',operations:'操作報告'};
 function scrollLatest(){window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'});$('new-messages').hidden=true;}
+function renderClock(){$('time').textContent=time(g)+':'+String(Math.floor(g.incidentSeconds||0)).padStart(2,'0');$('deadline').textContent=deadlineText(g);}
 function render(){
  const joined=!!g.managerEnding&&visible>g.endingStart;const members=['あなた','鬼塚','田山','森',...(g.infraDeadline?['佐伯（インフラ）']:[]),...(joined?['マネージャー']:[])];$('member-count').textContent=members.length+'人';$('member-list').textContent=members.join('\n');
  $('manager-blackout').hidden=!(g.managerEnding?.phase==='blackout'&&visible===g.timeline.length&&!resultRequested);$('manager-result').disabled=busy;
- $('time').textContent=time(g);$('trust').value=g.trust;$('trust-num').textContent=g.trust;$('mental').value=g.mental;$('mental-num').textContent=g.mental;
+ renderClock();$('trust').value=g.trust;$('trust-num').textContent=g.trust;$('mental').value=g.mental;$('mental-num').textContent=g.mental;
  $('state').textContent=g.dispatch?(g.dispatch.phase==='travelling'?'操作停止 · 鬼塚がタクシーで移動中':'GAME OVER · 鬼塚が現場に到着'):g.secondary?'追加障害：ACCOUNT_SYNC 停止':g.recovered?'SALES_IMPORT · 正常終了':g.lockEncountered&&!g.lockReleased?'再実行失敗 · DBロック':g.fileDamaged&&g.mismatchSeen?'受信ファイル · 件数不一致':'SALES_IMPORT · 異常終了';
  $('objective').textContent=objectiveText(g);
  renderChoices();
@@ -42,7 +43,7 @@ new ResizeObserver(resizeComposer).observe(document.querySelector('.composer'));
 for(const id of ['intro','call','result','paused','meeting'])$(id).addEventListener('cancel',e=>e.preventDefault());
 document.addEventListener('visibilitychange',()=>{saveProgress();last=Date.now();});
 window.addEventListener('pagehide',saveProgress);
-setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!busy&&!meetingActive(g)&&!pressedChoice&&!$('call').open&&!$('intro').open&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
+setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!$('intro').open){advanceIncidentTime(g,seconds);renderClock();saveProgress();}if(!document.hidden&&!paused&&!busy&&!meetingActive(g)&&!pressedChoice&&!$('call').open&&!$('intro').open&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function playReplies(showCustomerReply=false){
  if(busy)return;busy=true;renderChoices();
