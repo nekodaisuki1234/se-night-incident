@@ -19,13 +19,21 @@ function event(g,text){g.events.push({time:g.minutes,text});}
 function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
 function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
-function act(g,minutes=10){g.actions++;g.minutes+=minutes;}
+function endForDeadline(g){
+ if(g.ended||g.dispatch||g.managerEnding||!g.infraDeadline||g.minutes<=180)return false;
+ g.deadlineEnded=true;g.call=false;g.callReason=null;if(g.meeting)g.meeting.phase='done';
+ finish(g,'GAME OVER：復旧期限超過');
+ push(g,'internal','システム','03:00の復旧期限を超過しました。現地対応を終了します。');
+ push(g,'internal','鬼塚｜リーダー','顛末書を提出してくれ。これから1ヶ月、なぜなぜ分析だ。');
+ event(g,'復旧期限03:00を超過。顛末書提出・1ヶ月のなぜなぜ分析');return true;
+}
+function act(g,minutes=10){g.actions++;g.minutes+=minutes;return !endForDeadline(g);}
 export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text,notifyCustomer=true){if(notifyCustomer)urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){return withDialogue(g,{kind:'approval'},()=>requestApprovalCore(g,target));}
 function requestApprovalCore(g,target){
- if(g.ended||g.dispatch||meetingActive(g))return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
+ if(g.ended||g.dispatch||meetingActive(g))return;if(!act(g))return;push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
  if(target==='SALES_IMPORT'){
   if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','やって大丈夫と言える根拠は？ 失敗した場合の影響と、戻せるかどうかも整理してくれ。その説明ではまだ承認できない。');return;}
   if(g.lockEncountered&&!g.lockReleased){push(g,'internal','鬼塚｜リーダー','止まった要因がまだ残っているよな。状況が変わった根拠がないと承認できない。間違えたら説明するのは俺なんだよ。');return;}
@@ -37,7 +45,7 @@ function requestApprovalCore(g,target){
 }
 export function execute(g,raw){return withDialogue(g,{kind:'command'},()=>executeCore(g,raw));}
 function executeCore(g,raw){
- if(g.ended||!g.started)return;const input=raw.trim();if(!input)return;act(g,/^(?:job\s+rerun\s|check\s)/i.test(input)?15:10);push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
+ if(g.ended||!g.started)return;const input=raw.trim();if(!input)return;if(!act(g,/^(?:job\s+rerun\s|check\s)/i.test(input)?15:10))return;push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
  const c=input.replace(/\s+/g,' ').replace(/;$/,'').trim();
  if(c==='help')return emit(g,'対応コマンドは候補ボタンから選択できます。入力欄で編集して実行してください。');
  if(/^job status(?: SALES_IMPORT)?$/i.test(c)){fresh(g,'status');return emit(g,`SALES_IMPORT  ${g.recovered?'NORMAL RC=0':g.lockEncountered?'ABEND RC=28':'ABEND RC=12'}\nSALES_SUMMARY ${g.recovered?'NORMAL RC=0':'WAITING'}\nACCOUNT_SYNC  ${g.secondary?'STOPPED（追加障害）':'RUNNING'}`);}
@@ -176,7 +184,7 @@ export class RuleBasedProvider {
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){return withDialogue(g,{kind:'message',id,channel},()=>sendCore(g,channel,text,id,provider));}
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g,['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?15:10);push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}if(!act(g,['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?15:10))return;push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
  if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
  const reply=provider.respond(g,channel,text,id);if(channel==='internal'&&id==='internal-report'&&g.firstReportInstruction&&!g.reported&&!g.firstReportDelegated)return;push(g,channel,channel==='internal'?(infraQuery(id)?INFRA:['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
@@ -200,7 +208,7 @@ function tickCore(g,seconds){
 }
 export function answerCall(g,choice){return withDialogue(g,{kind:'call',choice,urgent:g.callReason},()=>answerCallCore(g,choice));}
 function answerCallCore(g,choice){
- if(g.ended&&!g.callReason)return;const urgent=g.callReason;act(g);g.call=false;g.callReason=null;
+ if(g.ended&&!g.callReason)return;const urgent=g.callReason;if(!act(g))return;g.call=false;g.callReason=null;
  if(urgent)push(g,'customer','高橋｜顧客','【緊急電話】'+urgent);
  const text=choice==='ignore'?'電話には応答せず、メールで対応します。':choice==='promise'?'電話で5分以内の復旧を約束しました。':`電話で現状を説明しました。${customerStatusText(g)}`;
  push(g,'customer','あなた',text);
@@ -278,7 +286,7 @@ export function chooseAction(g,choice){
  if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
  else if(choice.type==='approval')requestApproval(g,choice.target);
  else send(g,choice.channel,choice.text,choice.id);
- if(g.managerEnding||g.dispatch||meetingActive(g)||infraQuery(choice.id))return;
+ if(g.ended||g.managerEnding||g.dispatch||meetingActive(g)||infraQuery(choice.id))return;
  if(!(g.facts.files&&!g.recovered&&!g.upperReportRequested)&&(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー')))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
  if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  
@@ -395,7 +403,7 @@ function withDialogue(g,context,run){
  const outer=dialogueDepth===0;
  const before={actions:g.actions,terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
  dialogueDepth++;
- try{return run();}finally{dialogueDepth--;if(outer){delegateFirstReport(g,before);criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);if(context.kind!=='tick')maybeMeeting(g);}}
+ try{return run();}finally{dialogueDepth--;if(outer){delegateFirstReport(g,before);criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);endForDeadline(g);if(context.kind!=='tick')maybeMeeting(g);}}
 }
 
 function assessDanger(g,context,before){
@@ -535,7 +543,7 @@ export function restoreGame(raw){
   }
   // Both histories must point at the same messages when a colleague takes over.
   g.messages={internal:g.timeline.filter(m=>m.channel==='internal'),customer:g.timeline.filter(m=>m.channel==='customer')};
-  return g;
+  endForDeadline(g);return g;
  }catch{return null;}
 }
 
@@ -566,7 +574,7 @@ function meetingChoices(g){
 }
 function answerMeeting(g,choice){
  const m=g.meeting;if(!meetingChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
- act(g);meetingLine(g,'あなた',choice.text);
+ if(!act(g))return;meetingLine(g,'あなた',choice.text);
  if(choice.id==='meeting-good'){
   if(m.phase==='opening'){m.phase='followup';meetingLine(g,'部長','未確認の点は分かりました。では、次に何を確認して、どの区切りで続報できますか？');return;}
   closeMeeting(g,false);return;
@@ -624,7 +632,7 @@ function delegateFirstReport(g,before){
 // Kept as a compatibility export: wall time no longer advances the incident clock.
 export function advanceIncidentTime(g,seconds){}
 export function deadlineText(g){
- const remaining=180*60-g.minutes*60;
- const minutes=Math.ceil(Math.abs(remaining)/60);
- return remaining>0?'03:00まで あと'+Math.floor(minutes/60)+'時間'+String(minutes%60).padStart(2,'0')+'分':remaining===0?'03:00 · 復旧期限です':'03:00から '+Math.floor(minutes/60)+'時間'+String(minutes%60).padStart(2,'0')+'分超過';
+ if(!g.infraDeadline)return '';
+ const remaining=180-g.minutes;
+ return remaining>0?'3時まであと'+remaining+'分':remaining===0?'3時まであと0分':'3時の復旧期限を超過';
 }
