@@ -48,7 +48,7 @@ async function playReplies(showCustomerReply=false){
   if(message.presentation==='onsite'){$('typing').hidden=true;await delay(message.text==='〜完〜'?3500:Math.max(2500,message.pauseBefore||0));while(document.hidden)await delay(200);}
   else if(!g.callReason&&message.sender!=='あなた'&&messageSurface(message)==='teams'){
    $('typing').hidden=false;$('typing-name').textContent=message.sender==='操作結果'?'操作結果を確認中':message.sender.split('｜')[0]+'が入力中';requestAnimationFrame(scrollLatest);
-   await delay(g.dispatch?Math.max(1800,Math.min(3500,message.text.length*55)):message.sender==='操作結果'?450:700+Math.min(700,message.text.length*5));
+   await delay(g.dispatch?Math.max(1800,Math.min(3500,message.text.length*55)):message.sender==='操作結果'?900:1200+Math.min(1800,message.text.length*22));
    while(paused||document.hidden)await delay(200);
   }
   if(message.presentation!=='onsite'&&!g.callReason&&message.channel==='internal'&&message.sender!=='あなた')chatSound();
