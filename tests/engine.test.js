@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame,start,execute,send,requestApproval,tick,answerCall,parseCommandReport} from '../dist/engine.js';
+import {createGame,start,execute,send,requestApproval,tick,answerCall,parseCommandReport,nextChoices,chooseAction} from '../dist/engine.js';
 function game(){const g=createGame();start(g);return g;}
 function prepare(g){execute(g,'tail -n 30 /logs/SALES_IMPORT.log');execute(g,'ls -l /data/inbox');send(g,'internal','確認依頼','request-file');execute(g,'check /data/inbox/sales_20261012.csv');execute(g,"SELECT * FROM batch_history WHERE business_date = '20261012';");}
 function verify(g){execute(g,'job status SALES_SUMMARY');execute(g,"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';");}
@@ -16,3 +16,5 @@ test('処理済みの再実行と終了後の操作',()=>{const g=game();prepare
 test('チャットの操作報告が実際の調査として一度だけ反映される',()=>{const g=game();send(g,'internal','「tail -n 30 /logs/SALES_IMPORT.log」を入力しました。');assert.equal(g.facts.log,true);assert.equal(g.actions,1);assert.equal(g.timeline.filter(m=>m.channel==='operations'&&m.sender==='あなた').length,1);assert.ok(g.timeline.some(m=>m.sender==='操作結果'&&m.text.includes('INPUT FILE NOT FOUND')));});
 test('チャットからSQLと復旧操作を実行できる',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');send(g,'internal','job rerun SALES_IMPORTを入力しました');send(g,'internal','job status SALES_SUMMARYを入力しました');send(g,'internal',"「SELECT COUNT(*) FROM sales WHERE business_date = '20261012';」を入力しました。");send(g,'customer','復旧報告','complete');assert.equal(g.result,'模範復旧');});
 test('未実施・曖昧な報告はコマンド実行として扱わない',()=>{for(const s of ['job stop ACCOUNT_SYNCを入力していません','コマンドを入力しました','job rerun SALES_IMPORTを実行したい'])assert.equal(parseCommandReport(s),null);});
+test('各段階で3択を提示し、選択のみで正常復旧できる',()=>{const g=game();for(let i=0;i<15&&!g.ended;i++){const choices=nextChoices(g);assert.equal(choices.length,3);chooseAction(g,choices[0]);}assert.equal(g.result,'模範復旧');assert.deepEqual(nextChoices(g),[]);});
+test('3択の無断実行と追加障害の分岐を選べる',()=>{const g=game();chooseAction(g,nextChoices(g)[1]);chooseAction(g,nextChoices(g)[0]);const stop=nextChoices(g).find(c=>c.command==='job stop ACCOUNT_SYNC');assert.ok(stop);chooseAction(g,stop);assert.equal(g.secondary,true);assert.equal(nextChoices(g).length,3);chooseAction(g,nextChoices(g)[0]);const resume=nextChoices(g).find(c=>c.command==='job rerun ACCOUNT_SYNC');chooseAction(g,resume);assert.equal(g.secondary,false);});
