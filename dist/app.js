@@ -30,7 +30,9 @@ function openCustomerMail(){customerUnread=0;$('mail-badge').hidden=true;if(!$('
 $('open-mail').onclick=openCustomerMail;
 $('close-mail').onclick=()=>{$('customer-mail').close();last=Date.now();render();};
 $('customer-mail').addEventListener('cancel',()=>{last=Date.now();});
-$('retry').onclick=()=>{g=createGame();try{localStorage.removeItem(SAVE_KEY);}catch{}location.reload();};$('new-messages').onclick=scrollLatest;
+function restartGame(){g=createGame();try{localStorage.removeItem(SAVE_KEY);}catch{}location.reload();}
+$('restart').onclick=()=>{const confirmed=window.confirm('最初からやり直しますか？ 今の進行状況はリセットされます。');last=Date.now();if(confirmed)restartGame();};
+$('retry').onclick=restartGame;$('new-messages').onclick=scrollLatest;
 new ResizeObserver(resizeComposer).observe(document.querySelector('.composer'));
 for(const id of ['intro','call','result','paused'])$(id).addEventListener('cancel',e=>e.preventDefault());
 document.addEventListener('visibilitychange',()=>{saveProgress();last=Date.now();});
