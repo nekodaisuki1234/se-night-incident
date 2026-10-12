@@ -23,7 +23,8 @@ function act(g){g.actions++;g.minutes++;}
 export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text){urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
-export function requestApproval(g,target){
+export function requestApproval(g,target){return withDialogue(g,{kind:'approval'},()=>requestApprovalCore(g,target));}
+function requestApprovalCore(g,target){
  if(g.ended||g.dispatch||meetingActive(g))return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
  if(target==='SALES_IMPORT'){
   if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','やって大丈夫と言える根拠は？ 失敗した場合の影響と、戻せるかどうかも整理してくれ。その説明ではまだ承認できない。');return;}
@@ -392,7 +393,7 @@ function withDialogue(g,context,run){
  if(meetingActive(g))return;
  if(g.dispatch){if(context.kind==='tick')advanceDispatch(g,context.seconds);return;}
  const outer=dialogueDepth===0;
- const before={terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
+ const before={actions:g.actions,terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
  dialogueDepth++;
  try{return run();}finally{dialogueDepth--;if(outer){delegateFirstReport(g,before);criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);if(context.kind!=='tick')maybeMeeting(g);}}
 }
@@ -611,12 +612,13 @@ function beginManagerEnding(g,operation,impact){
 }
 
 function delegateFirstReport(g,before){
- if(!g.firstReportInstruction||g.reported||g.firstReportDelegated||before.log||!g.facts.log||g.ended||g.dispatch)return;
+ if(!g.firstReportInstruction||g.reported||g.firstReportDelegated||g.actions===before.actions||g.ended||g.dispatch)return;
  g.firstReportDelegated=true;g.reported=true;g.replyIdle=0;g.replyLevel=0;
- push(g,'internal','鬼塚｜リーダー','……一次報が先だって言ったよな。もういい、俺の方で送っとく');
+ g.trust=Math.max(0,g.trust-5);g.mental=Math.max(0,g.mental-5);
+ push(g,'internal','鬼塚｜リーダー','顧客への一次報が先だって言ったよな。もういい、俺の方で送っとく');
  push(g,'customer','鬼塚｜リーダー','【一次報】売上取込の異常終了と後続集計の待機を確認しています。原因・影響件数・復旧見込みは確認中です。確認できた状況から続報します。');
  push(g,'customer','高橋｜顧客','一次報を受領しました。確認が進み次第、続報をお願いします。');
- event(g,'一次報を優先する指示より先にログを確認したため、鬼塚が顧客へ一次報を代送（ログ調査は正常実施）');
+ event(g,'顧客への一次報を優先する明示指示より先に別の対応を選択したため、鬼塚が代送（信用-5・メンタル-5。操作自体の安全性とは別評価）');
 }
 
 // Kept as a compatibility export: wall time no longer advances the incident clock.

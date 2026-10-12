@@ -20,7 +20,7 @@ function ui(){
  const context=vm.createContext(sandbox);
  vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*\n/,''),context);
  const run=code=>vm.runInContext(code,context);
- run("g=createGame({setbacks:false});start(g);send(g,'internal',internalStatusText(g),'internal-report');g.callSeen=true;visible=g.timeline.length;$('intro').close();render();");
+ run("g=createGame({setbacks:false});start(g);g.firstReportInstruction=false;send(g,'internal',internalStatusText(g),'internal-report');g.callSeen=true;visible=g.timeline.length;$('intro').close();render();");
  return {run,el,intervals,timeouts,listeners,async drain(){for(let i=0;i<300&&run('busy');i++){const fn=timeouts.shift();if(fn)fn();await Promise.resolve();}assert.equal(run('busy'),false);}};
 }
 test('行動の返答を表示中は時計を止め、要求を返答後に表示してから三択を更新する',async()=>{
