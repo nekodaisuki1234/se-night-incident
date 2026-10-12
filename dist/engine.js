@@ -22,7 +22,7 @@ function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operation
 function act(g){g.actions++;g.minutes++;}
 export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
-function penalty(g,text){urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
+function penalty(g,text,notifyCustomer=true){if(notifyCustomer)urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){return withDialogue(g,{kind:'approval'},()=>requestApprovalCore(g,target));}
 function requestApprovalCore(g,target){
  if(g.ended||g.dispatch||meetingActive(g))return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
@@ -54,11 +54,11 @@ function executeCore(g,raw){
   if(g.secondary)return emit(g,'ACCOUNT_SYNCはすでに停止しています。','error');g.secondary=true;g.hadSecondary=true;g.internalReported=false;g.approved.delete('ACCOUNT_SYNC');penalty(g,'普段トロいのに、こういう時には慎重さに欠くのはなんでなんだ？');push(g,'customer','高橋｜顧客','口座同期まで止まっています。最初の障害と関係があるんですか？ 操作の経緯を説明してください。');return emit(g,'ACCOUNT_SYNC STOPPED / 追加障害が発生','error');
  }
  const rerun=c.match(/^job rerun (SALES_IMPORT|ACCOUNT_SYNC)$/i);
- if(rerun){const target=rerun[1].toUpperCase();const approval=g.approved.has(target);g.approved.delete(target);
-  if(!approval){urgentCall(g,'本番バッチの再実行通知が来ました。いま実行したんですか？ 承認と影響確認は済んでいるんですよね？');g.mental=Math.max(0,g.mental-15);event(g,`${target}を無断で再実行`);push(g,'internal','鬼塚｜リーダー','その再実行、対象の話は分かったが俺はまだ承認していない。誰の判断で進めた？ 実行結果と影響を今すぐ報告して。');}
+ if(rerun){const target=rerun[1].toUpperCase();const approval=g.approved.has(target);const firstAbend=target==='SALES_IMPORT'&&!approval&&!g.file&&!g.events.some(e=>e.text==='SALES_IMPORTを無断で再実行');g.approved.delete(target);
+  if(!approval){if(!firstAbend)urgentCall(g,'本番バッチの再実行通知が来ました。いま実行したんですか？ 承認と影響確認は済んでいるんですよね？');g.mental=Math.max(0,g.mental-15);event(g,`${target}を無断で再実行`);if(!firstAbend)push(g,'internal','鬼塚｜リーダー','その再実行、対象の話は分かったが俺はまだ承認していない。誰の判断で進めた？ 実行結果と影響を今すぐ報告して。');}
   if(target==='ACCOUNT_SYNC'){if(!g.secondary)return emit(g,'実行拒否：正常稼働中のジョブです。','error');g.secondary=false;progress(g);event(g,'追加障害を復旧');return emit(g,'ACCOUNT_SYNC RUNNING / 再開完了','success');}
   if(g.recovered){penalty(g,'処理済みのジョブをもう一回流したのか？ 金融で二重処理が何を意味するか分かってるな。二重処理につながる操作だ。');return emit(g,'DUPLICATE EXECUTION DETECTED','error');}
-  if(!g.file){penalty(g,'また失敗か。いけると思ってやったんだよな？ で、今度はどうすんだ？');return emit(g,'SALES_IMPORT ABEND RC=12 / INPUT FILE NOT FOUND','error');}
+  if(!g.file){if(firstAbend){emit(g,'SALES_IMPORT ABEND RC=12 / INPUT FILE NOT FOUND','error');push(g,'internal','システム','【障害検知】SALES_IMPORTの再実行がアベンドしました（RC=12）。');penalty(g,'なんで黙ってリランしたんだ？',false);return;}penalty(g,'また失敗か。いけると思ってやったんだよな？ で、今度はどうすんだ？');return emit(g,'SALES_IMPORT ABEND RC=12 / INPUT FILE NOT FOUND','error');}
   if(!g.facts.checked){penalty(g,'大丈夫かも分からないままやったのか？ その判断、どう説明するつもりだ？');return emit(g,'INPUT VALIDATION REQUIRED / 実行保留','error');}
   if(g.setbacks&&!g.lockReleased){g.lockEncountered=true;progress(g);event(g,'再実行がDBロックで失敗（更新0件・ロールバック済み）');push(g,'internal','森｜監視','今度はRC=28、DBロック待ちでタイムアウトです。更新は0件、ロールバックを確認しました。');emit(g,'SALES_IMPORT ABEND RC=28 / LOCK TIMEOUT / 0 rows committed','error');push(g,'internal','鬼塚｜リーダー','DBロックで止まったんだな。更新0件という報告は受け取った。復旧見込みに何が変わる？ 再実行は改めて確認してくれ。');return;}
   g.recovered=true;g.recoveredAt=g.minutes;progress(g);event(g,'売上取込と後続集計が正常終了');push(g,'internal','森｜監視','取込と後続の正常終了を検知しました。件数確認と顧客報告をお願いします。');return emit(g,'SALES_IMPORT NORMAL RC=0 / 1248 rows\n後続SALES_SUMMARYの正常終了を検知','success');
