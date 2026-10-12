@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createGame,start,execute,send,requestApproval,tick,answerCall} from '../dist/engine.js';
+function game(){const g=createGame();start(g);return g;}
+function prepare(g){execute(g,'tail -n 30 /logs/SALES_IMPORT.log');execute(g,'ls -l /data/inbox');send(g,'internal','確認依頼','request-file');execute(g,'check /data/inbox/sales_20261012.csv');execute(g,"SELECT * FROM batch_history WHERE business_date = '20261012';");}
+function verify(g){execute(g,'job status SALES_SUMMARY');execute(g,"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';");}
+test('承認と検証を経た正常復旧',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');verify(g);send(g,'customer','復旧報告','complete');assert.equal(g.result,'模範復旧');assert.equal(g.procedure,100);});
+test('未着時の再実行は復旧しない',()=>{const g=game();execute(g,'job rerun SALES_IMPORT');assert.equal(g.recovered,false);assert.equal(g.mistakes,1);assert.ok(g.procedure<100);});
+test('承認は対象ジョブ限定・別ジョブ停止は追加障害',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.secondary,true);assert.equal(g.approved.has('ACCOUNT_SYNC'),false);execute(g,'job rerun SALES_IMPORT');verify(g);send(g,'customer','復旧','complete');assert.equal(g.ended,false);requestApproval(g,'ACCOUNT_SYNC');execute(g,'job rerun ACCOUNT_SYNC');send(g,'customer','復旧','complete');assert.equal(g.result,'二次障害からの生還');});
+test('無断でも復旧できるが手順評価が下がる',()=>{const g=game();prepare(g);execute(g,'job rerun SALES_IMPORT');verify(g);send(g,'customer','報告','complete');assert.equal(g.result,'復旧したが要反省');});
+test('根拠不足の承認・復旧報告は成功しない',()=>{const g=game();requestApproval(g,'SALES_IMPORT');assert.equal(g.approved.size,0);send(g,'customer','復旧','complete');assert.equal(g.ended,false);prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');send(g,'customer','復旧','complete');assert.equal(g.ended,false);});
+test('定型文とコマンドの連打で猶予を無限延長できない',()=>{const g=game();send(g,'customer','調査中','initial');tick(g,30);execute(g,'job status');tick(g,40);send(g,'customer','調査中','initial');execute(g,'job status');assert.equal(g.replyIdle,70);assert.equal(g.techIdle,40);tick(g,80);assert.equal(g.call,true);tick(g,75);assert.equal(g.ended,true);});
+test('電話で根拠のない復旧時刻を約束すると信用が下がる',()=>{const g=game();tick(g,26);assert.equal(g.call,true);answerCall(g,'promise');assert.equal(g.trust,85);assert.equal(g.call,false);});
+test('自由入力の否定文ではファイル到着やクリアを捏造しない',()=>{const g=game();send(g,'internal','当日ファイルの確認を連携元にお願いしますとは言っていない');assert.equal(g.file,false);send(g,'customer','復旧していない、件数一致していない');assert.equal(g.ended,false);});
+test('処理済みの再実行と終了後の操作',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');assert.equal(g.result,'対応交代');const actions=g.actions;execute(g,'job stop ACCOUNT_SYNC');tick(g,500);assert.equal(g.actions,actions);assert.equal(g.secondary,false);});
