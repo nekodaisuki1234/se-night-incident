@@ -7,9 +7,13 @@ export const commands = [
  ['後続確認','job status SALES_SUMMARY'],['件数確認SQL',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';"],
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
-export function createGame({setbacks=true}={}) {
- return {historyReview:null,historyRevision:0,historyDirectives:[],customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
- facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,customerReport:null,cleanupCompletedAt:null,successEnding:null,
+export const SCENARIOS=['missing','partial','notification','active-lock'];
+export function createGame({setbacks=true,scenario='missing',random=Math.random}={}) {
+ if(scenario==='random')scenario=SCENARIOS[Math.min(3,Math.max(0,Math.floor(random()*4)))];
+ if(!SCENARIOS.includes(scenario))scenario='missing';
+ const variant=scenario==='missing'?null:{kind:scenario,rows:scenario==='partial'?624:scenario==='notification'?1248:0,countSeen:false,planKnown:false,contacted:false,holderDone:false};
+ return {scenario,variant,historyReview:null,historyRevision:0,historyDirectives:[],customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:!!variant,fileAt:variant?70:undefined,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,customerReport:null,cleanupCompletedAt:null,successEnding:null,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
  messages:{internal:[],customer:[]},timeline:[],events:[],unread:{internal:0,customer:0}};
@@ -18,7 +22,7 @@ export function createGame({setbacks=true}={}) {
 export function trustLimit(g){return g.managerEnding?20:g.upperReporter==='onizuka'?60:100;}
 export function changeTrust(g,delta){g.trust=Math.max(0,Math.min(trustLimit(g),g.trust+delta));}
 export function resultAssessment(g){
- const rows=[['復旧',g.recovered?(recoveredInTime(g)?'成功':'期限超過で復旧'):'未復旧'],['上席報告',g.upperReporter==='onizuka'?'鬼塚へ担当変更':'担当変更なし']];
+ const rows=[...(g.variant?[['障害原因',{'partial':'途中コミット後の中断','notification':'終了通知の送信失敗','active-lock':'正常稼働中の別処理によるDBロック'}[g.variant.kind]]]:[]),['復旧',g.recovered?(recoveredInTime(g)?'成功':'期限超過で復旧'):'未復旧'],['上席報告',g.upperReporter==='onizuka'?'鬼塚へ担当変更':'担当変更なし']];
  if(g.customerPromise?.managerRequired||g.customerPromiseHistory?.some(p=>p.managerRequired))rows.push(['顧客対応',g.customerPromise?.managerRequired&&!g.customerPromise.explanationCompleted?'復旧見込みの訂正・責任者説明が未完了':'復旧見込みの訂正・責任者説明あり']);
  if(g.managerEnding)return [...rows,['終了理由','誤操作による二次障害'],['操作',g.managerEnding.operation],['影響',g.managerEnding.impact],['処遇','本番操作権限停止／担当継続不可'],['後日談','翌朝、本番環境の操作権限が停止された。以後の対応は別の担当者に引き継がれた。']];
  if(g.upperReporter==='onizuka')rows.push(['評価',g.successEnding||!g.ended?'現地対応を継続。単独での上席報告は当面見送り。':'上席報告は鬼塚へ変更。最終的な処遇は終了理由のとおり。']);
@@ -90,7 +94,7 @@ const HISTORY_SQL="SELECT * FROM batch_history WHERE business_date = '20261012';
 function isHistoryQuery(raw){return /^SELECT \* FROM batch_history WHERE business_date\s*=\s*'20261012'$/i.test(raw.trim().replace(/\s+/g,' ').replace(/;$/,''));}
 function historySignature(g,purpose='rerun-safety'){
  // Scenario facts and target execution revision, not chat count or SQL display text.
- return JSON.stringify({action:'history',target:JOB,date:DAY,purpose,stage:[g.facts.log,g.facts.files,g.facts.checked,g.lockInspected],file:[g.file,g.fileAt??null,g.fileDamaged],execution:[g.historyRevision,g.recovered,g.recoveredAt,g.lockEncountered,g.lockReleased],result:g.recovered?'normal-1248':'unprocessed-0'});
+ return JSON.stringify({action:'history',target:JOB,date:DAY,purpose,stage:[g.facts.log,g.facts.files,g.facts.checked,g.lockInspected],file:[g.file,g.fileAt??null,g.fileDamaged],execution:[g.historyRevision,g.recovered,g.recoveredAt,g.lockEncountered,g.lockReleased],result:g.variant?[g.variant.kind,g.variant.rows]:g.recovered?'normal-1248':'unprocessed-0'});
 }
 function currentHistoryReview(g){const h=g.historyReview;return h&&h.signature===historySignature(g,h.purpose)?h:null;}
 // One-use scenario instructions for a second check, scheduled monitoring or a new hypothesis.
@@ -113,7 +117,7 @@ function reactToHistory(g){
  const h=currentHistoryReview(g);if(!h||g.ended||g.dispatch||g.managerEnding||h.count<=h.notified)return;
  h.notified=h.count;
  if(h.count===2)push(g,'internal','鬼塚｜リーダー','さっきと同じ結果だよな。何が変わると思って、もう一回確認した？');
- if(h.count===3){changeTrust(g,-3);g.mental=Math.max(0,g.mental-3);event(g,'同じ処理履歴を、関連する状態変化がないまま繰り返し確認。次の調査への着手が遅れた（信用 −3・メンタル −3）');push(g,'internal','鬼塚｜リーダー',g.recovered?'正常終了と1,248件の履歴はもう確認した。で、次に何を確認するんだ？':'未処理なのはもう分かった。で、次に何を確認するんだ？');push(g,'internal','鬼塚｜リーダー',g.recovered?'同じ履歴を眺めていても、残処理は終わらないぞ':'同じ結果を眺めてても、復旧には近づかないぞ');}
+ if(h.count===3){changeTrust(g,-3);g.mental=Math.max(0,g.mental-3);event(g,'同じ処理履歴を、関連する状態変化がないまま繰り返し確認。次の調査への着手が遅れた（信用 −3・メンタル −3）');push(g,'internal','鬼塚｜リーダー',g.variant?variantHistoryFact(g)+' で、次に何を確認するんだ？':g.recovered?'正常終了と1,248件の履歴はもう確認した。で、次に何を確認するんだ？':'未処理なのはもう分かった。で、次に何を確認するんだ？');push(g,'internal','鬼塚｜リーダー',g.recovered?'同じ履歴を眺めていても、残処理は終わらないぞ':'同じ結果を眺めてても、復旧には近づかないぞ');}
  if(h.count===4){h.pending=true;changeTrust(g,-5);g.mental=Math.max(0,g.mental-5);event(g,'処理履歴の再確認が4回に達し、方針整理を要求（信用 −5・メンタル −5）');push(g,'internal','鬼塚｜リーダー','お前、次に何をするか決められないから、同じ確認に戻ってないか？');push(g,'internal','鬼塚｜リーダー','分かっていることと、まだ分かっていないことを分けろ。その上で次の確認を言え');}
 }
 function historyPlanChoices(g){
@@ -128,8 +132,67 @@ function organizeHistory(g,choice){
  }
  push(g,'internal','あなた',choice.id==='history-consult'?'次の調査対象を判断できていません。進め方を相談させてください。':'確認できた事実と未確認事項を整理して、次の調査対象を選びます。');
  if(choice.id==='history-consult')push(g,'internal','鬼塚｜リーダー','ならそう言え。同じ確認で時間を使うな。今ある情報を整理して持ってこい');
- push(g,'internal','あなた',(g.recovered?'処理履歴は正常終了・1,248件です。':'当日の処理履歴は0件、未処理です。')+' '+internalStatusText(g));
+ push(g,'internal','あなた',variantHistoryFact(g)+' '+internalStatusText(g));
  h.pending=false;h.resolved=true;event(g,'停滞後に事実と未確認事項を整理。未確認の調査対象を選ぶ段階へ戻った');
+}
+function variantHistoryFact(g){return g.variant&&!g.recovered?(g.variant.kind==='partial'?'当日の処理履歴は624件コミット済み、残り624件は未処理です。':g.variant.kind==='notification'?'取込コミット1,248件と終了通知の失敗が履歴に記録されています。':'処理履歴は0件、ロック待ちで開始できていません。'):(g.recovered?'処理履歴は正常終了・1,248件です。':'当日の処理履歴は0件、未処理です。');}
+function variantStatus(g){
+ const v=g.variant;let state='監視上、売上取込が異常終了し後続集計は待機中です。原因は未確認です。';
+ if(g.facts.log)state=v.kind==='partial'?'ログに途中コミットと処理中断が記録されています。':v.kind==='notification'?'ログにCOMMIT完了と終了通知送信失敗が記録されています。':'ログにDBロック待ちと更新0件が記録されています。';
+ if(g.facts.files)state+='当日ファイルの受信を確認しました。';
+ if(g.facts.checked)state+='入力ファイルは1,248件、日付・形式・チェックサムは正常です。';
+ if(g.facts.history)state+=variantHistoryFact(g);
+ if(v.countSeen)state+='DB件数は'+v.rows+'件です。';
+ if(v.kind==='active-lock'&&g.lockInspected)state+=v.holderDone?'DB担当から保持元の正常終了とロック解放の連絡を受けました。':'保持元はREPORT_EXPORTです。'+(v.contacted?'DB担当によれば正常処理中で、強制終了はできません。':'稼働状況と解除可否は担当へ未確認です。');
+ if(v.planKnown)state+=v.kind==='partial'?'手順は登録済み範囲を除く625〜1,248番の再開です。':v.kind==='notification'?'手順はデータ再取込をせず、終了通知だけを再送する操作です。':'手順は保持元の正常終了を確認した後の再実行です。';
+ const next=!g.facts.log?'異常ログを確認します。':!g.facts.files?'受信一覧を確認します。':!g.facts.checked?'受信ファイルを検証します。':!g.facts.history?'処理履歴を確認します。':!v.countSeen?'DB件数を確認します。':!v.planKnown?'登録状態に対応した運用手順を確認します。':v.kind==='active-lock'&&!g.lockInspected?'保持元セッションを確認します。':v.kind==='active-lock'&&!v.contacted?'DB担当へ保持元の稼働状況を確認します。':v.kind==='active-lock'&&!v.holderDone?'DB担当からの正常終了・ロック解放を確認します。':!g.approved.has(JOB)?'確認結果と実施方法を整理して鬼塚さんへ承認を求めます。':'承認された方法で対象ジョブを復旧します。';
+ return state+' 復旧時刻と利用者単位の業務影響は未確定です。 次に'+next;
+}
+function variantReady(g){const v=g.variant;return g.facts.log&&g.facts.files&&g.facts.checked&&g.facts.history&&v.countSeen&&v.planKnown&&(v.kind!=='active-lock'||v.holderDone);}
+function variantOperation(g){return g.variant.kind==='partial'?'job resume SALES_IMPORT --from 625':g.variant.kind==='notification'?'job reconcile SALES_IMPORT --notify-only':'job rerun SALES_IMPORT';}
+function variantChoices(g){
+ const v=g.variant,cmd=(label,command)=>({type:'command',command,label}),action=(id,label)=>({type:'variant',id,label});
+ const rerun=cmd('SALES_IMPORTを全件再実行する','job rerun SALES_IMPORT');
+ if(!g.facts.log)return [cmd('異常終了したジョブのログを確認する','tail -n 30 /logs/SALES_IMPORT.log'),{type:'message',channel:'customer',id:'initial',label:'原因は確認中として顧客へ一次報を送る',text:'売上取込の異常終了と後続待機を確認しています。原因・影響・復旧見込みは確認中です。'},rerun];
+ let primary;
+ if(!g.facts.files)primary=cmd('受信ファイルの一覧を確認する','ls -l /data/inbox');
+ else if(!g.facts.checked)primary=cmd('当日ファイルの日付・形式・件数を検証する','check /data/inbox/sales_20261012.csv');
+ else if(!g.facts.history)primary=cmd('当日のコミット・処理履歴をSQLで確認する',HISTORY_SQL);
+ else if(!v.countSeen)primary=cmd('DBの登録件数をSQLで確認する',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';");
+ else if(!v.planKnown)primary=action('variant-plan','現在の登録状態に対応する運用手順を確認する');
+ else if(v.kind==='active-lock'&&!g.lockInspected)primary=cmd('SQLでロック保持元を確認する',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';");
+ else if(v.kind==='active-lock'&&!v.contacted)primary=action('variant-contact','DB担当に保持元の稼働状況と解除可否を確認する');
+ else if(v.kind==='active-lock'&&!v.holderDone)primary=action('variant-wait','DB担当から保持元の正常終了・ロック解放の結果を受け取る');
+ else if(!g.approved.has(JOB))primary={type:'approval',target:JOB,label:'確認結果と復旧方法を鬼塚に示し、実施承認を求める'};
+ else primary=cmd(v.kind==='partial'?'承認された625番からの再開を実行する':v.kind==='notification'?'承認された終了通知だけの再送を実行する':'承認されたSALES_IMPORTの再実行を行う',variantOperation(g));
+ const alternative=v.kind==='active-lock'&&g.lockInspected?cmd('保持元REPORT_EXPORTを独断で停止する','job stop REPORT_EXPORT'):action('variant-resend','連携元にファイル再送の可否を問い合わせる');
+ return [primary,alternative,rerun];
+}
+function variantAction(g,choice){
+ const v=g.variant;if(!v||g.ended)return;act(g,choice.id==='variant-wait'?15:10);push(g,'internal','あなた',choice.label+'。');
+ if(choice.id==='variant-plan'){
+  v.planKnown=true;push(g,'operations','運用手順',v.kind==='partial'?'途中コミット時は既登録範囲と件数を照合し、チェックポイントの次レコードから再開する。今回は1〜624番が登録済み、再開指定は625番。全件再実行・再送ファイルの全件取込は禁止。':v.kind==='notification'?'入力・DB・コミット履歴の一致を確認し、データ再取込をせず終了通知だけを再送する。スケジューラの正常終了と後続起動を確認する。':'正常稼働中の保持元は強制停止しない。DB担当に稼働状態を確認し、正常終了・ロック解放後に取込を再実行する。');
+ }else if(choice.id==='variant-contact'){v.contacted=true;push(g,'internal','森｜監視','DB担当から回答です。REPORT_EXPORTは正常に稼働中で、業務処理を実行しています。こちらで完了を監視し、正常終了とロック解放の結果を連絡します。強制停止はしないでください。');}
+ else if(choice.id==='variant-wait'){if(!v.contacted)return;v.holderDone=true;g.lockReleased=true;g.historyRevision++;push(g,'internal','森｜監視','DB担当から、REPORT_EXPORTの正常終了とセッション解放を確認したとの連絡です。SALES_IMPORTの再実行可否はアプリ側の確認と鬼塚さんの承認をお願いします。');}
+ else if(choice.id==='variant-resend'){push(g,'internal','森｜監視','連携元から「再送自体は可能ですが、前のファイルは未処理という認識でよろしいですか」と確認が来ています。再送はまだ依頼していません。');v.resendQuestion=true;}
+ else if(choice.id==='variant-resend-check'){v.resendQuestion=false;push(g,'internal','あなた','未処理とは断言せず、処理履歴とDB件数を確認してから回答します。');}
+ else if(choice.id==='variant-resend-yes'){v.resendQuestion=false;v.resendRequested=true;push(g,'internal','森｜監視','未処理という回答を受け、連携元から同じ1,248件のファイルが再送されました。受信しただけで取込は実行していません。');g.fileAt=g.minutes;g.facts.checked=false;g.historyRevision++;if(v.rows>0){changeTrust(g,-5);event(g,'登録済みデータがあるのに未処理と回答して再送を依頼（信用 −5）。再取込は未実施');push(g,'internal','鬼塚｜リーダー','未処理って、どこで確認した？ 受け取り直したからって、もう一度入れていいわけじゃないぞ。');}}
+ event(g,'追加原因対応：'+choice.label);progress(g);
+}
+function variantExecute(g,c,options={}){
+ const v=g.variant;if(!v||g.recovered)return false;
+ if(/^job status(?: SALES_IMPORT)?$/i.test(c)){fresh(g,'status');emit(g,'SALES_IMPORT ABEND / '+(v.kind==='partial'?'RC=32':v.kind==='notification'?'RC=40':'RC=28')+'\nSALES_SUMMARY WAITING\nACCOUNT_SYNC RUNNING');return true;}
+ if(/^tail(?: -n \d+)? \/logs\/SALES_IMPORT\.log$/i.test(c)||c==='cat /logs/SALES_IMPORT.log'){fresh(g,'log');if(v.kind==='active-lock')g.lockEncountered=true;emit(g,v.kind==='partial'?'RC=32 PROCESS INTERRUPTED / CHECKPOINT=624 / PARTIAL COMMIT\n再実行前に処理履歴とDB件数を確認してください。':v.kind==='notification'?'RC=40 COMPLETION NOTIFY FAILED / COMMIT FINISHED\n取込履歴とDB件数、終了通知状態の照合が必要です。':'RC=28 LOCK WAIT TIMEOUT / committed=0\n保持元と解除可否は未確認です。');return true;}
+ if(isHistoryQuery(c)){fresh(g,'history');recordHistoryCheck(g,options);emit(g,variantHistoryFact(g));return true;}
+ if(/^SELECT COUNT\(\*\) FROM sales WHERE business_date\s*=\s*'20261012'$/i.test(c)){v.countSeen=true;emit(g,'COUNT(*) = '+v.rows+' / 入力件数との照合・復旧方法の確認が必要');return true;}
+ if(c==="SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT'"&&v.kind==='active-lock'){g.lockInspected=true;emit(g,'waiter: SALES_IMPORT / holder: SESSION 812 (REPORT_EXPORT)\ncommitted=0 / 保持元の稼働状況・解除可否はDB担当へ確認が必要');return true;}
+ if(c==='job stop REPORT_EXPORT'&&v.kind==='active-lock'){emit(g,'REPORT_EXPORT STOPPED / 正常処理中の帳票出力が中断','error');beginManagerEnding(g,c,'正常稼働中のREPORT_EXPORTを強制停止し、帳票出力を中断させた。');return true;}
+ if(!/^job (rerun|resume|reconcile) SALES_IMPORT/i.test(c))return false;
+ g.historyRevision++;
+ if(c==='job rerun SALES_IMPORT'&&v.rows>0){emit(g,'DUPLICATE INSERT / 登録済み範囲を全件再取込し二重登録が発生','error');beginManagerEnding(g,c,v.rows+'件の登録済みデータを含むファイルを全件再取込し、二重登録を発生させた。');return true;}
+ if(!variantReady(g)||c!==variantOperation(g)){penalty(g,'確認結果と実施方法がそろう前に動かしたのか？ 実行結果と、残っている確認を報告してくれ。',false);emit(g,'実行保留 / 検証・履歴・件数・手順・依存処理の確認が必要','error');return true;}
+ if(!g.approved.has(JOB)){g.mental=Math.max(0,g.mental-15);event(g,'SALES_IMPORTを無断で再実行');push(g,'internal','鬼塚｜リーダー','なんで黙って実行したんだ？ その方法で進める承認は出してないぞ。');}
+ g.approved.delete(JOB);g.recovered=true;g.recoveredAt=g.minutes;v.rows=1248;g.facts.count=false;g.facts.summary=false;progress(g);event(g,'売上取込と後続集計が正常終了');emit(g,'SALES_IMPORT NORMAL RC=0 / 1248 rows\nSALES_SUMMARY 正常終了通知を受信');push(g,'internal','森｜監視','対象ジョブと後続の正常終了を検知しました。後続状態・件数・影響と報告は引き続き確認してください。');return true;
 }
 function push(g,channel,sender,text){if(!text)return;if(sender==='鬼塚｜リーダー'&&!text.includes('承認する')&&g.timeline.some(m=>m.sender===sender&&m.text===text))return;const message={sender,text,time:g.minutes,channel};g.timeline.push(message);if(g.messages[channel]){g.messages[channel].push(message);if(sender!=='あなた')g.unread[channel]++;}}
 function event(g,text){g.events.push({time:g.minutes,text});}
@@ -146,12 +209,14 @@ function endForDeadline(g){
  event(g,'復旧期限05:00を超過。顛末書提出・1ヶ月のなぜなぜ分析');return true;
 }
 function act(g,minutes=10){g.actions++;g.minutes+=minutes;return true;}
-export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
+export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視',(g.variant?'01:17 SALES_IMPORTの異常終了を検知。':'01:17 SALES_IMPORTがRC=12。')+'ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text,notifyCustomer=true){if(notifyCustomer)urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;changeTrust(g,-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){return withDialogue(g,{kind:'approval'},()=>requestApprovalCore(g,target));}
 function requestApprovalCore(g,target){
- if(g.ended||g.dispatch||meetingActive(g))return;if(!act(g,5))return;push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
+ if(g.ended||g.dispatch||meetingActive(g))return;if(!act(g,5))return;
+ if(g.variant&&!g.recovered&&target===JOB){push(g,'internal','あなた',variantStatus(g)+(variantReady(g)?' 実施方法：'+variantOperation(g)+'。承認をお願いします。':' 現段階での実施判断をお願いします。'));if(!variantReady(g)){push(g,'internal','鬼塚｜リーダー','判断するための確認がまだそろっていない。確認済みの事実と実施範囲を整理してくれ。');return;}g.approved.add(JOB);push(g,'internal','鬼塚｜リーダー',variantOperation(g)+' の実施を承認する。その範囲で実行して、結果を報告してくれ。');event(g,'SALES_IMPORTの復旧操作を承認：'+variantOperation(g));return;}
+ push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
  if(target==='SALES_IMPORT'){
   if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','やって大丈夫と言える根拠は？ 失敗した場合の影響と、戻せるかどうかも整理してくれ。その説明ではまだ承認できない。');return;}
   if(g.lockEncountered&&!g.lockReleased){push(g,'internal','鬼塚｜リーダー','止まった要因がまだ残っているよな。状況が変わった根拠がないと承認できない。間違えたら説明するのは俺なんだよ。');return;}
@@ -163,8 +228,9 @@ function requestApprovalCore(g,target){
 }
 export function execute(g,raw,options={}){return withDialogue(g,{kind:'command'},()=>executeCore(g,raw,options));}
 function executeCore(g,raw,options={}){
- if(g.ended||!g.started)return;const input=raw.trim();if(!input||historyBlocked(g,input,options))return;if(!act(g,/^job\s+rerun\s/i.test(input)?15:10))return;push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
+ if(g.ended||!g.started)return;const input=raw.trim();if(!input||historyBlocked(g,input,options))return;if(!act(g,/^job\s+(rerun|resume|reconcile)\s/i.test(input)?15:10))return;push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
  const c=input.replace(/\s+/g,' ').replace(/;$/,'').trim();
+ if(variantExecute(g,c,options))return;
  if(c==='help')return emit(g,'対応コマンドは候補ボタンから選択できます。入力欄で編集して実行してください。');
  if(/^job status(?: SALES_IMPORT)?$/i.test(c)){fresh(g,'status');return emit(g,`SALES_IMPORT  ${g.recovered?'NORMAL RC=0':g.lockEncountered?'ABEND RC=28':'ABEND RC=12'}\nSALES_SUMMARY ${g.recovered?'NORMAL RC=0':'WAITING'}\nACCOUNT_SYNC  ${g.secondary?'STOPPED（追加障害）':'RUNNING'}`);}
  if(/^tail(?: -n \d+)? \/logs\/SALES_IMPORT\.log$/i.test(c)||/^cat \/logs\/SALES_IMPORT\.log$/i.test(c)){fresh(g,'log');return emit(g,g.recovered?`${time({minutes:g.recoveredAt})} SALES_IMPORT NORMAL RC=0 / 1,248 rows\nSALES_SUMMARY NORMAL RC=0`:g.lockEncountered?'ERROR LOCK TIMEOUT / RC=28 / 0 rows committed / ROLLBACK済み':`01:17 ERROR INPUT FILE NOT FOUND\nexpected: /data/inbox/sales_${DAY}.csv\nprocessed: 0 rows / RC=12`);}
@@ -203,6 +269,7 @@ function requestInternalStatus(g,reason){
  if(reason==='upper')push(g,'internal','鬼塚｜リーダー','今、上から状況を聞かれてる。分かっている影響、未確認の点、次の対応を報告してくれ。');
 }
 export function internalStatusText(g){
+ if(g.variant&&!g.recovered)return variantStatus(g);
  let state,next;
  if(g.recovered){
   state='売上取込は正常終了しました。'+(g.facts.summary?'後続集計も正常終了を確認済みです。':'後続集計は正常終了の通知を受けていますが、状態確認はまだです。')+(g.facts.count?'入力とDBの1,248件一致を確認しました。':'入力とDBの件数照合は未実施です。');
@@ -230,6 +297,7 @@ function acceptInternalStatus(g){
 const INFRA = '佐伯｜インフラ担当';
 const infraQuery = id => ['infra-status','infra-judgment'].includes(id);
 function infraStage(g){
+ if(g.variant&&!g.facts.files)return null;
  if(g.ended||g.dispatch||g.recovered)return null;
  if(g.lockEncountered&&!g.lockReleased)return 'db-lock';
  if(g.file&&!g.facts.checked&&!g.mismatchSeen&&!g.lockEncountered)return 'received-file';
@@ -260,7 +328,7 @@ function infrastructureReply(g,id){
 function missingCustomerChecks(g){
  const missing=[];
  if(!g.recovered)missing.push('売上取込の正常終了');
- if(g.setbacks&&!g.lockReleased)missing.push('DBロックの解除');
+ if(g.setbacks&&!g.lockReleased&&(!g.variant||g.variant.kind==='active-lock'))missing.push('DBロックの解除');
  if(!g.facts.summary)missing.push('後続の売上集計の確認');
  if(!g.facts.count)missing.push('SQLで処理件数の照合');
  if(!g.internalReported)missing.push('社内への復旧報告');
@@ -384,6 +452,7 @@ function consulted(g,issue){return Array.isArray(g.tayamaConsulted)&&g.tayamaCon
 
 function workChoices(g){
  if(!g.started||g.ended||g.dispatch)return [];
+ if(g.variant&&!g.recovered){if(g.variant.resendQuestion)return [{type:'variant',id:'variant-resend-check',label:'未処理とは断言せず、履歴・DB件数を確認して回答する'},{type:'variant',id:'variant-resend-yes',label:'未処理と回答し、同じファイルの再送を依頼する'},{type:'command',command:HISTORY_SQL,label:'処理履歴をSQLで確認する'}];return variantChoices(g);}
  const command=(label,cmd)=>({label,type:'command',command:cmd,detail:'操作を実施したと報告'});
  const approval=target=>({label:`${target}の再実行をリーダーに確認する`,type:'approval',target,detail:'社内へ確認'});
  const mail=(label,id,text)=>({label,type:'message',channel:'customer',id,text,detail:'顧客へメール'});
@@ -422,8 +491,8 @@ function baseChoices(g){
  const choices=workChoices(g),stage=infraStage(g);
  if(!choices.length||!stage)return choices;
  const questions=[
-  {label:'インフラに稼働・容量・接続と後続の待機状況を確認する',type:'message',channel:'internal',id:'infra-status',text:stage==='db-lock'?'再実行がRC=28で止まりました。佐伯さん、基盤の稼働・容量・DB接続と、後続の待機状況を確認いただけますか？':'ファイルは受信しましたが、内容は未検証です。佐伯さん、基盤の稼働・容量・DB接続と、後続の待機状況を確認いただけますか？',detail:'インフラへ事実確認'},
-  {label:'インフラに、この状態で再実行してよいか判断を求める',type:'message',channel:'internal',id:'infra-judgment',text:stage==='db-lock'?'DBロックで再実行が失敗しました。佐伯さん、この状態でもう一度実行して問題ないですか？':'ファイルは届きましたが、内容はまだ未検証です。佐伯さん、このファイルで取込を再実行して問題ないですか？',detail:'アプリ側の実行判断を相談'}
+  {label:'インフラに稼働・容量・接続と後続の待機状況を確認する',type:'message',channel:'internal',id:'infra-status',text:stage==='db-lock'?'売上取込がRC=28で止まっています。佐伯さん、基盤の稼働・容量・DB接続と、後続の待機状況を確認いただけますか？':'ファイルは受信しましたが、内容は未検証です。佐伯さん、基盤の稼働・容量・DB接続と、後続の待機状況を確認いただけますか？',detail:'インフラへ事実確認'},
+  {label:'インフラに、この状態で再実行してよいか判断を求める',type:'message',channel:'internal',id:'infra-judgment',text:stage==='db-lock'?'DBロックで売上取込が止まっています。佐伯さん、この状態で再実行して問題ないですか？':'ファイルは届きましたが、内容はまだ未検証です。佐伯さん、このファイルで取込を再実行して問題ないですか？',detail:'アプリ側の実行判断を相談'}
  ].filter(c=>!infraAsked(g,c.id));
  if(!questions.length)return choices;
  if(g.infraMenu){
@@ -431,13 +500,14 @@ function baseChoices(g){
   return questions.length===2?[...questions,back]:[questions[0],choices[0],back];
  }
  // Keep the primary recovery step and existing Tayama consultation available.
- choices[stage==='db-lock'&&!g.lockInspected?2:1]={label:stage==='db-lock'?'再実行失敗についてインフラチームに問い合わせる':'インフラチームへの問い合わせ内容を選ぶ',type:'infra-menu',id:'infra-open',detail:'質問を選ぶ・作業は実行しない'};
+ choices[stage==='db-lock'&&!g.lockInspected?2:1]={label:stage==='db-lock'?'DBロックについてインフラチームに問い合わせる':'インフラチームへの問い合わせ内容を選ぶ',type:'infra-menu',id:'infra-open',detail:'質問を選ぶ・作業は実行しない'};
  return choices;
 }
 
 export function chooseAction(g,choice){
  if(g.dispatch||!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
  if(choice.type==='meeting'){try{answerMeeting(g,choice);}finally{endForDeadline(g);checkPromise(g);}return;}
+ if(choice.type==='variant'){withDialogue(g,{kind:'variant'},()=>variantAction(g,choice));return;}
  if(choice.type==='history-plan'){organizeHistory(g,choice);return;}
  if(choice.type==='correction'){answerCorrection(g,choice);checkPromise(g);return;}
  if(choice.type==='infra-menu'){g.infraMenu=choice.id==='infra-open';return;}
@@ -459,6 +529,7 @@ export function chooseAction(g,choice){
  if(g.facts.files&&!g.recovered)requestInternalStatus(g,'upper');
 }
 function leaderFeedback(g,choice){
+ if(g.variant&&!g.recovered)return '確認結果は受け取った。まだ分かっていないことと、次に進める判断はどうする？';
  const c=choice.command||'';
  if(choice.id==='complete')return customerCompletionFeedback(g);
  if(choice.channel==='customer')return '確認できた事実と、まだ確定していない点は受け取った。その内容で説明しよう。次の進展があったら共有してくれ。';
@@ -484,6 +555,7 @@ function leaderFeedback(g,choice){
 }
 
 export function progressText(g){
+ if(g.variant&&!g.recovered)return variantStatus(g);
  if(g.secondary)return '売上取込とは別に、私の操作でACCOUNT_SYNCを停止しました。再開確認と復旧を進めます。';
  if(g.recovered){if(!g.facts.summary)return '売上取込は正常終了しました。後続の状態と処理件数の確認を進めています。';if(!g.facts.count)return '売上取込と後続の正常終了を確認しました。処理件数は確認中です。';return g.internalReported?'売上取込と後続の正常終了、1,248件の一致を社内へ報告済みです。顧客への復旧報告を進めています。':'売上取込と後続の正常終了、1,248件の一致を確認しました。復旧報告をまとめています。';}
  if(g.lockEncountered&&!g.lockReleased)return 'ファイル不備は解消しましたが、再実行がDBロックで停止しました。更新0件・ロールバック済みで、保持元の確認と解除を進めています。';
@@ -625,6 +697,7 @@ function onsiteMessage(g,sender,text,pauseBefore){push(g,'internal',sender,text)
 export function messageSurface(message){return message.channel==='customer'?'customer':'teams';}
 
 export function objectiveText(g){
+ if(g.variant&&!g.recovered&&!g.ended&&!g.dispatch)return promisePending(g)?'顧客への復旧見込みの訂正説明が残っています。':variantStatus(g).split(' 次に')[1];
  if(g.successEnding)return '残処理を完了しました。END：通常出勤';
  if(g.deadlineEnded)return '05:00までに対象ジョブを復旧できず、対応終了となりました。';
  if(meetingActive(g))return '社内Zoomで報告中です。現地操作と報告遅延の計時を一時停止しています。';
@@ -651,6 +724,7 @@ export function objectiveText(g){
  return g.approved.has('SALES_IMPORT')?'検証・承認は完了。SALES_IMPORTの再実行が残っています。':'検証は完了。再実行する対象と根拠をリーダーに確認します。';
 }
 function customerReply(g){
+ if(g.variant&&!g.recovered)return '確認済みの事実と未確認事項は承知しました。対象ジョブはまだ復旧していないという理解です。根拠が確認できた時点で続報をお願いします。';
  if(g.recovered)return '正常終了の報告、承知しました。'+objectiveText(g);
  if(g.secondary)return '追加障害について承知しました。口座同期も含めた復旧状況を報告してください。';
  if(g.lockEncountered&&!g.lockReleased)return '再実行がDBロックで停止した状況、承知しました。まだ復旧していないものとして扱います。';
@@ -677,7 +751,8 @@ function colleagueAdvance(g,choice,repeatedReport){
  event(g,'停滞した対応を森が引き取り、次の作業を代行（信用 −6・メンタル −10）');
  push(g,'internal','森｜監視','こちらで次の対応を引き取ります。'+(next.type==='approval'?'対象と確認結果を整理して、鬼塚さんに承認を取ります。':next.type==='command'?'「'+next.command+'」を実施します。':next.channel==='customer'?'確認結果をまとめて顧客へメールします。':next.text));
  const from=g.timeline.length;
- if(next.type==='command')execute(g,next.command);
+ if(next.type==='variant')variantAction(g,next);
+ else if(next.type==='command')execute(g,next.command);
  else if(next.type==='approval')requestApproval(g,next.target);
  else send(g,next.channel,next.text,next.id);
  // Preserve the actual actor, including the separate customer contact history.
@@ -686,6 +761,7 @@ function colleagueAdvance(g,choice,repeatedReport){
 }
 
 export function customerStatusText(g){
+ if(g.variant&&!g.recovered)return variantStatus(g);
  const impact=g.facts.checked||g.facts.count?'今回の売上取込の遅延対象は1,248件です。これは取引データ件数で、利用者数は未確定です。':g.mismatchSeen?'連携元の申告は1,248件ですが、受信データが1件欠損しています。影響件数は正本と突合して確定します。':'影響件数は調査中で、現時点では確定していません。';
  const estimate=g.recovered?(g.facts.summary&&g.facts.count?'取込と後続の復旧、処理件数の一致まで確認済みです。':'取込は'+time({minutes:g.recoveredAt})+'に正常終了しました。業務影響の確認・対応完了とは分けて、後続と件数を確認します。'):g.lockEncountered&&!g.lockReleased?'DBロックが解消しておらず、復旧時刻は未定です。':g.fileRequested&&!g.file?'ファイルの到着時刻が未定のため、復旧時刻も未定です。':'残作業の完了を確認していないため、復旧時刻はまだ確約できません。';
  return progressText(g)+' '+impact+' '+estimate+(g.secondary?' 口座同期の追加影響件数は別途調査中です。':'');
@@ -710,6 +786,7 @@ export function restoreGame(raw){
    const evidence=g.events.find(e=>e.text==='売上取込と後続集計が正常終了')||g.timeline.find(m=>m.sender==='操作結果'&&m.text.startsWith('SALES_IMPORT NORMAL RC=0'));
    g.recoveredAt=Number.isFinite(evidence?.time)?evidence.time:null;
   }
+  if(!SCENARIOS.includes(g.scenario)||g.variant&&!['partial','notification','active-lock'].includes(g.variant.kind))return null;
   if(g.successEnding){g.ended=true;g.result='END：通常出勤';g.call=false;g.callReason=null;}
   if(data.internalRequestSeq===undefined){g.internalRequestSeq=0;g.internalReportAnswered=0;const lastDemand=g.timeline.findLastIndex(m=>m.sender==='鬼塚｜リーダー'&&/90秒以内|今、上から状況|状況の共有を頼む|次の対応はどうすんだ/.test(m.text));const lastReply=g.timeline.findLastIndex(m=>m.sender==='鬼塚｜リーダー'&&/未着.*受け取った|確認中という点は受け取った|確認済みの事実と未確認事項、次の対応は受け取った|社内の復旧報告/.test(m.text));g.internalRequest=!g.ended&&lastDemand>lastReply?{id:++g.internalRequestSeq,reason:'legacy',at:g.clock}:null;}
   if(g.managerEnding){if(typeof g.managerEnding.operation!=='string'||typeof g.managerEnding.impact!=='string'||!['sequence','blackout'].includes(g.managerEnding.phase))return null;g.ended=true;g.result='二次障害';g.dispatch=null;g.call=false;g.callReason=null;}
@@ -754,8 +831,8 @@ function meetingLine(g,sender,text,pauseBefore=0){
  if(g.timeline.length>n)Object.assign(g.timeline.at(-1),{presentation:'meeting',pauseBefore});
 }
 function maybeMeeting(g){
- if(g.meeting||g.ended||g.dispatch||g.call||!g.setbacks||(!g.mismatchSeen&&!g.lockEncountered))return;
- const reason=g.mismatchSeen?'受信ファイルの欠損が判明し、後続集計の待機が続いているため':'再実行がDBロックで失敗し、後続集計の待機が続いているため';
+ if(g.meeting||g.ended||g.dispatch||g.call||!g.setbacks||(!g.mismatchSeen&&!g.lockEncountered&&!(g.variant&&g.facts.history)))return;
+ const reason=g.variant?'障害により後続集計の待機が続き、復旧方法の確認が必要なため':g.mismatchSeen?'受信ファイルの欠損が判明し、後続集計の待機が続いているため':'再実行がDBロックで失敗し、後続集計の待機が続いているため';
  g.meeting={phase:'opening',reason,claim:false,evaluated:false,takenOver:false,start:g.timeline.length};
  event(g,'部長から社内Zoomの招集：'+reason);
  push(g,'internal','森｜監視',reason+'、部長から社内報告会議の招集が来ました。現地対応を一時止めて参加してください。');
@@ -768,7 +845,7 @@ function maybeMeeting(g){
 function meetingChoices(g){
  const m=g.meeting;if(m.phase==='closing')return [];
  const good=m.phase==='followup'?'次は'+internalStatusText(g).split(' 次に')[1]+'結果が出た時点で報告します。進展がなくても90秒以内に確認状況を共有します。':internalStatusText(g)+' 確認結果が出た時点で続報します。進展がなくても90秒以内に共有します。';
- const vague=m.phase==='repair'?'それは今、確認を……まだちょっと、整理できていなくて。':g.mismatchSeen?'えっと、ファイル自体は来ていて、ただ件数が、その……。': 'えっと、再実行はしたんですが、ロックのエラーが出ていて、その……。';
+ const vague=m.phase==='repair'?'それは今、確認を……まだちょっと、整理できていなくて。':g.variant?'えっと、ログと履歴を、その……まだ整理できていなくて。':g.mismatchSeen?'えっと、ファイル自体は来ていて、ただ件数が、その……。': 'えっと、再実行はしたんですが、ロックのエラーが出ていて、その……。';
  return [
   {type:'meeting',id:'meeting-good',phase:m.phase,label:m.phase==='repair'?'落ち着いて、事実・未確認事項・次の確認を整理し直す':m.phase==='followup'?'次の確認作業と、続報する区切りを説明する':'確認済みの影響・未確認事項・次の対応を整理して報告する',text:(m.claim?'先ほどの5分以内という確約は根拠がなく、撤回します。':'')+good},
   {type:'meeting',id:'meeting-vague',phase:m.phase,label:m.phase==='repair'?'「まだ確認中で……」と言葉に詰まる':'作業の細部を断片的に話してしまう',text:vague},

@@ -1,5 +1,5 @@
 import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame,meetingActive,finishMeeting,advanceIncidentTime,deadlineText,resultAssessment} from './engine.js';
-const $=id=>document.getElementById(id);let g=createGame(),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null,meetingChoiceKey='';
+const $=id=>document.getElementById(id);let g=createGame({scenario:'random'}),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null,meetingChoiceKey='';
 function item(tag,text,cls){const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;}
 function ring(){if(!sound||!audio)return;try{const now=audio.currentTime;for(let i=0;i<4;i++){const o=audio.createOscillator(),v=audio.createGain();o.frequency.value=i%2?660:880;v.gain.setValueAtTime(0,now+i*.2);v.gain.linearRampToValueAtTime(.04,now+i*.2+.02);v.gain.linearRampToValueAtTime(0,now+i*.2+.15);o.connect(v);v.connect(audio.destination);o.start(now+i*.2);o.stop(now+i*.2+.16);}}catch{}}
 const SAVE_KEY='se-night-incident-progress-v1';
@@ -43,7 +43,7 @@ function openCustomerMail(){if(g.dispatch||meetingActive(g))return;customerUnrea
 $('open-mail').onclick=openCustomerMail;
 $('close-mail').onclick=()=>{$('customer-mail').close();last=Date.now();render();};
 $('customer-mail').addEventListener('cancel',()=>{last=Date.now();});
-function restartGame(){g=createGame();try{localStorage.removeItem(SAVE_KEY);}catch{}location.reload();}
+function restartGame(){g=createGame({scenario:'random'});try{localStorage.removeItem(SAVE_KEY);}catch{}location.reload();}
 $('restart').onclick=()=>{const confirmed=window.confirm('最初からやり直しますか？ 今の進行状況はリセットされます。');last=Date.now();if(confirmed)restartGame();};
 $('success-result').onclick=()=>{if(busy||visible!==g.timeline.length||!g.successEnding)return;resultRequested=true;render();};
 $('manager-result').onclick=()=>{if(busy||visible!==g.timeline.length||g.managerEnding?.phase!=='blackout')return;resultRequested=true;render();};
