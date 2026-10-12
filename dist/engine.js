@@ -20,7 +20,7 @@ function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
 function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
 function act(g){g.actions++;g.minutes++;}
-export function start(g){if(g.started||g.dispatch)return;g.started=true;push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。まず、分かっている影響と次の対応を聞かせて。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に状況を整理して。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
+export function start(g){if(g.started||g.dispatch)return;g.started=true;push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text){urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){
