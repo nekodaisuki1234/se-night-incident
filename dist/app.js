@@ -1,5 +1,5 @@
 import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame,meetingActive,finishMeeting,advanceIncidentTime,deadlineText} from './engine.js';
-const $=id=>document.getElementById(id);let g=createGame(),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null;
+const $=id=>document.getElementById(id);let g=createGame(),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null,meetingChoiceKey='';
 function item(tag,text,cls){const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;}
 function ring(){if(!sound||!audio)return;try{const now=audio.currentTime;for(let i=0;i<4;i++){const o=audio.createOscillator(),v=audio.createGain();o.frequency.value=i%2?660:880;v.gain.setValueAtTime(0,now+i*.2);v.gain.linearRampToValueAtTime(.04,now+i*.2+.02);v.gain.linearRampToValueAtTime(0,now+i*.2+.15);o.connect(v);v.connect(audio.destination);o.start(now+i*.2);o.stop(now+i*.2+.16);}}catch{}}
 const SAVE_KEY='se-night-incident-progress-v1';
@@ -66,16 +66,19 @@ async function playReplies(showCustomerReply=false){
  }}finally{busy=false;last=Date.now();$('typing').hidden=true;if(showCustomerReply&&!meetingActive(g)&&!g.ended&&!g.callReason&&!g.dispatch)openCustomerMail();render();resizeComposer();}
 }
 function renderMeeting(){
- if(!meetingActive(g)){if($('meeting').open)$('meeting').close();return;}
+ if(!meetingActive(g)){meetingChoiceKey='';if($('meeting').open)$('meeting').close();return;}
  if(rendered<g.timeline.length&&g.timeline[rendered]?.presentation!=='meeting'&&!g.timeline.slice(0,visible).some(m=>m.presentation==='meeting'))return;
  if(!$('meeting').open)$('meeting').showModal();
  $('choices').replaceChildren();
  const lines=g.timeline.slice(0,visible).filter(m=>m.presentation==='meeting');
  if($('meeting-log').children.length!==lines.length){$('meeting-log').replaceChildren(...lines.map(m=>{const line=item('div','','meeting-line');line.append(item('b',m.sender==='鬼塚｜リーダー'?'鬼塚':m.sender),item('p',m.text));return line;}));$('meeting-log').scrollTop=$('meeting-log').scrollHeight;}
  $('meeting-return').hidden=busy||visible<g.timeline.length||g.meeting.phase!=='closing';
- if(busy){for(const b of $('meeting-choices').children)b.disabled=true;return;}
+ if(busy){meetingChoiceKey='';for(const b of $('meeting-choices').children)b.disabled=true;return;}
  $('meeting-speaking').textContent='';
- $('meeting-choices').replaceChildren(...nextChoices(g).map((choice,i)=>{const b=item('button','','choice');b.type='button';b.append(item('span',String(i+1),'choice-number'),item('span',choice.label));b.onclick=()=>{if(busy)return;chooseAction(g,choice);saveProgress();playReplies();};return b;}));
+ const choices=nextChoices(g),key=JSON.stringify(choices);
+ if(key===meetingChoiceKey)return;
+ meetingChoiceKey=key;
+ $('meeting-choices').replaceChildren(...choices.map((choice,i)=>{const b=item('button','','choice');b.type='button';b.append(item('span',String(i+1),'choice-number'),item('span',choice.label));b.onclick=()=>{if(busy)return;chooseAction(g,choice);saveProgress();playReplies();};return b;}));
 }
 $('meeting-return').onclick=()=>{if(busy||visible<g.timeline.length)return;finishMeeting(g);$('meeting').close();choiceKey='';saveProgress();playReplies();};
 

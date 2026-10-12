@@ -63,3 +63,16 @@ test('Zoomの選択で期限を超えたら会議画面を閉じて結果へ進�
  const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");await h.drain();assert.equal(h.el('meeting').open,true);
  h.run('g.minutes=284;');h.el('meeting-choices').children[0].onclick();await h.drain();assert.equal(h.run('g.deadlineEnded'),true);assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,1);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);
 });
+
+
+test('Zoomのpointerupとclickの間に再描画しても押したボタンを保持する',async()=>{
+ const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");await h.drain();
+ const button=h.el('meeting-choices').children[0];
+ h.listeners.pointerup();h.timeouts.shift()();
+ assert.equal(h.el('meeting-choices').children[0],button);
+ const before=h.run('g.actions');button.onclick();button.onclick();await h.drain();
+ assert.equal(h.run('g.actions'),before+1);assert.equal(h.run('g.meeting.phase'),'followup');
+ const next=h.el('meeting-choices').children[0];assert.notEqual(next,button);
+ h.run('render();');assert.equal(h.el('meeting-choices').children[0],next);
+ next.onclick();await h.drain();h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);
+});
