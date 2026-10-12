@@ -160,3 +160,13 @@ test('相談済み情報のない旧セーブを読めて時間経過の共通�
 test('田山の精神ダメージは再選択や再開で重複せず下限は0',()=>{
  let g=damagedGame();g.mental=3;const choice=nextChoices(g).find(c=>c.id==='critic-approval');chooseAction(g,choice);assert.equal(g.mental,0);assert.equal(g.tayamaMentalDamage,3);assert.equal(g.trust,100);assert.equal(g.dispatch,null);g=restoreGame(serializeGame(g));chooseAction(g,choice);send(g,'internal','相談','critic-approval');assert.equal(g.mental,0);assert.equal(g.events.filter(e=>e.text.includes('一般論で返された')).length,1);
 });
+
+test('顧客の嫌味は催促後だけ出て再開後も同じ返答を繰り返さない',()=>{
+ const punctual=game();send(punctual,'customer','調査中','initial');assert.ok(!punctual.messages.customer.some(m=>m.text.includes('こちらから伺う前')));
+ let g=game();tick(g,75);assert.match(g.messages.customer.at(-1).text,/こちらから確認する前/);const trust=g.trust,mental=g.mental;send(g,'customer','調査中','initial');assert.match(g.messages.customer.at(-1).text,/作業中なのは承知/);assert.equal(g.trust,trust);assert.equal(g.mental,mental);assert.equal(g.replyIdle,0);
+ g=restoreGame(serializeGame(g));tick(g,75);send(g,'customer','調査中','progress-report');assert.equal(g.messages.customer.filter(m=>m.text.includes('こちらから伺う前')).length,1);assert.ok(g.messages.internal.every(m=>!m.sender.startsWith('高橋')));
+});
+test('序盤の選択肢は判明情報に合わせて変わり社内報告は作業を進めない',()=>{
+ let g=game();pick(g,'tail -n 30 /logs/SALES_IMPORT.log');const logLabels=nextChoices(g).map(c=>c.label);const facts=JSON.stringify(g.facts);pick(g,'internal-status');assert.equal(JSON.stringify(g.facts),facts);assert.equal(g.trust,100);assert.equal(g.mistakes,0);assert.equal(g.assistCount,undefined);assert.ok(!nextChoices(g).some(c=>c.id==='internal-status'));assert.equal(nextChoices(g).length,3);
+ g=restoreGame(serializeGame(g));assert.ok(!nextChoices(g).some(c=>c.id==='internal-status'));pick(g,'ls -l /data/inbox');const missingLabels=nextChoices(g).map(c=>c.label);assert.ok(missingLabels.every(label=>!logLabels.includes(label)));pick(g,'internal-status');assert.equal(g.file,false);assert.equal(g.fileRequested,false);assert.equal(g.dispatch,null);pick(g,'request-file');const received=nextChoices(g);assert.equal(received.length,3);assert.ok(received.every(c=>!missingLabels.includes(c.label)));assert.ok(received.some(c=>c.command==='check /data/inbox/sales_20261012.csv'));assert.ok(received.some(c=>/内容は未検証/.test(c.label)));
+});
