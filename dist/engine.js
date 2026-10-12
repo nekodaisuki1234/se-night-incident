@@ -79,6 +79,7 @@ export class RuleBasedProvider {
    if(id==='patch-file'){penalty(g,'勝手にデータを書き換えたのか？ お前、それで何かあったらどう説明するんだ？');return takeTayama(g,'patch',true);}
    if(id==='release-lock'){if(!g.lockInspected)return '保持元が分かっていない状態では解除できません。待機セッションを確認してください。';g.lockReleased=true;g.approved.delete('SALES_IMPORT');progress(g);event(g,'DB担当がREPORT_EXPORTの残存セッションを確認してロック解除');return 'DB担当に確認しました。REPORT_EXPORTは処理終了後のセッションだけが残っていました。担当側で終了し、ロック解除を確認しました。';}
    if(id==='critic-approval'){const issue=consultationIssue(g);if(!issue||consulted(g,issue))return '';g.tayamaConsulted=[...(g.tayamaConsulted||[]),issue];const reply=takeTayama(g,issue==='missing-row'?'consultMissing':'consultLock',true);if(reply){const damage=Math.min(5,g.mental);g.mental-=damage;g.tayamaMentalDamage=(g.tayamaMentalDamage||0)+damage;event(g,'田山に具体策を聞いたが一般論で返された（メンタル −'+damage+'）');}return reply;}
+   if(id==='internal-status'){const stage=g.facts.files?'missing-file':'log';g.earlyInternalReports=[...(g.earlyInternalReports||[]),stage];return stage==='log'?'ログで未着エラーが出ていることと、受信状況は確認中という点は受け取った。調査は続けてくれ。顧客への説明も同時に頼む。':'当日ファイル未着、後続は待機中、連携元への確認が次の対応だな。その内容は受け取った。見通しが変わったら共有してくれ。';}
    if(id==='ack'){if(!g.ack){g.ack=true;progress(g);}return '分かった。で、どうすんだ？ お前の考えを聞いてるんだが。';}
    if(id==='request-file'){
     if(!g.facts.log||!g.facts.files)return 'ファイル未着と判断した根拠を確認してください。ログと受信ディレクトリの両方が必要です。';
@@ -91,8 +92,9 @@ export class RuleBasedProvider {
   if(['initial','progress-report','file-report'].includes(id)){
    // A delivered status update is a reply, even when the incident is unchanged.
    // Technical inactivity is tracked separately and is never reset here.
-   g.reported=true;g.replyIdle=0;g.replyLevel=0;
+   const prompted=g.replyLevel>0;g.reported=true;g.replyIdle=0;g.replyLevel=0;
    if(id==='progress-report')g.correctionNeeded=false;
+   if(prompted&&!g.customerReminderReplied){g.customerReminderReplied=true;return customerReply(g)+' 作業中なのは承知しておりますが、こちらから伺う前に共有いただけると助かります。こちらも社内に説明が必要ですので。';}
    return customerReply(g)+' 影響件数と復旧見込みは、根拠と未確定の点を分けて、更新があれば連絡してください。';
   }
   if(id==='complete'){
@@ -123,7 +125,7 @@ function tickCore(g,seconds){
  if(!g.started||g.ended)return;g.clock+=seconds;g.techIdle+=seconds;g.replyIdle+=seconds;
  const t=Math.min(3,Math.floor(g.techIdle/90)),r=Math.min(3,Math.floor(g.replyIdle/75));
  if(t>g.techLevel){g.techLevel=t;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'internal','鬼塚｜リーダー',['','状況の共有を頼む。確認できたことと、まだ分からないことは分けてくれ。','進展がないまま時間が過ぎている。次の対応はどうすんだ？ こっちも説明しないといけないんだよ。','このまま任せ続ける判断はできない。担当を交代する。これ以上の操作は止めてくれ。'][t]);if(t===3)finish(g,'対応交代');}
- if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'customer','高橋｜顧客',['','進捗報告をお願いします。こちらから聞かないと状況が分からないんですか。','報告がないので電話しました。現状を説明してください。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','状況が分からないため報告が必要とのことです。','報告がないため電話したとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
+ if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'customer','高橋｜顧客',['','作業を進めていただいているとは思いますが、こちらから確認する前に、一度ご連絡いただけるものと思っておりました。現状を共有いただけますか。','その後のご連絡がないため、お電話しました。作業と並行で大変かとは思いますが、ご連絡まで含めて対応いただけると助かります。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','「こちらから確認する前にご連絡いただけるものと思っていた」とのことです。','作業と並行して、連絡まで含めて対応してほしいとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
  if(g.clock>=25&&!g.callSeen){g.callSeen=true;g.call=true;}
 }
 export function answerCall(g,choice){return withDialogue(g,{kind:'call',choice,urgent:g.callReason},()=>answerCallCore(g,choice));}
@@ -154,6 +156,10 @@ function baseChoices(g){
  const complete=mail('正常終了と件数一致を報告して対応を終える','complete','売上取込・後続集計の正常終了と1,248件の一致を確認しました。復旧を報告します。');
  const file=mail('影響件数と復旧見込みを、確認できた根拠で報告する','file-report',customerStatusText(g));
  const msg=(label,id,text)=>({label,type:'message',channel:'internal',id,text,detail:'社内へ連絡'});
+ const internalStage=g.facts.files?'missing-file':'log';
+ const internalUpdate=msg(g.facts.files?'当日ファイル未着と連携元への確認方針を鬼塚に報告する':'ログの未着エラーと、これから受信一覧を調べる方針を報告する','internal-status',g.facts.files?'ログと受信一覧で当日ファイル未着を確認しました。後続集計は待機中です。転送遅延の理由と到着見込みは未確認のため、次に連携元へ確認します。':'ログに当日ファイル未着のエラーが出ています。受信一覧はまだ未確認です。次に実際の到着状況を確認します。');
+ const sideCheck=!g.facts.status?command('ジョブ一覧で後続と別系統の稼働状況を確認する','job status'):command('SQLで当日の処理履歴を先に確認する',"SELECT * FROM batch_history WHERE business_date = '20261012';");
+ const earlyReport=(g.earlyInternalReports||[]).includes(internalStage)?sideCheck:internalUpdate;
  const issue=consultationIssue(g);
  const critic=consulted(g,issue)?(issue==='missing-row'?file:command('SQLでロック待ちと保持元を再確認する',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';")):msg('田山に具体的な対応案を聞く','critic-approval',issue==='missing-row'?'件数が1件不足し、チェックサムも不一致です。田山さん、具体的にはどう対応するのがよいでしょうか？':'DBロックで再実行が止まりました。保持元はREPORT_EXPORTで、更新0件・ロールバック済みです。田山さん、具体的にはどう進めるのがよいでしょうか？');
  if(!g.secondary&&g.setbacks){
@@ -163,9 +169,9 @@ function baseChoices(g){
  }
  if(g.secondary)return g.approved.has('ACCOUNT_SYNC')?[command('ACCOUNT_SYNCを再開したと報告する','job rerun ACCOUNT_SYNC'),complete,command('ジョブ一覧を確認したと報告する','job status')]:[approval('ACCOUNT_SYNC'),command('ACCOUNT_SYNCを無断で再開したと報告する','job rerun ACCOUNT_SYNC'),complete];
  if(!g.facts.log)return [command('異常終了したジョブのログを確認したと報告する','tail -n 30 /logs/SALES_IMPORT.log'),g.reported?stop:initial,rerun];
- if(!g.facts.files)return [command('受信ファイルの一覧を確認したと報告する','ls -l /data/inbox'),rerun,g.reported?stop:initial];
- if(!g.file)return [{label:'連携元に当日ファイルの確認を依頼する',type:'message',channel:'internal',id:'request-file',text:'当日ファイルの確認を連携元にお願いします。',detail:'社内へ連絡'},rerun,file];
- if(!g.facts.checked)return [command('到着した当日ファイルを検証したと報告する','check /data/inbox/sales_20261012.csv'),rerun,file];
+ if(!g.facts.files)return [command('受信ファイルの一覧を確認したと報告する','ls -l /data/inbox'),earlyReport,g.reported?stop:mail('未着エラーを確認中と顧客へ初報を送る','initial','ログでは当日ファイル未着のエラーを確認しました。実際の受信状況と影響件数は調査中です。次に受信一覧を確認します。')];
+ if(!g.file)return [{label:'連携元に当日ファイルの確認を依頼する',type:'message',channel:'internal',id:'request-file',text:'当日ファイルの確認を連携元にお願いします。',detail:'社内へ連絡'},earlyReport,mail('当日ファイル未着と、連携元への確認予定を顧客に伝える','file-report',customerStatusText(g))];
+ if(!g.facts.checked)return [command('到着した当日ファイルを検証したと報告する','check /data/inbox/sales_20261012.csv'),command('投入前にSQLで当日の処理履歴を確認する',"SELECT * FROM batch_history WHERE business_date = '20261012';"),mail('ファイル受信済み・内容は未検証と顧客に伝える','file-report',customerStatusText(g))];
  if(!g.facts.history)return [command('SQLで当日の処理履歴を確認したと報告する',"SELECT * FROM batch_history WHERE business_date = '20261012';"),rerun,stop];
  if(!g.recovered)return g.approved.has('SALES_IMPORT')?[rerun,file,stop]:[approval('SALES_IMPORT'),{...rerun,label:'承認を取らずSALES_IMPORTを再実行したと報告する'},file];
  if(!g.facts.summary)return [command('後続の売上集計を確認したと報告する','job status SALES_SUMMARY'),complete,rerun];
