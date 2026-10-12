@@ -18,8 +18,8 @@ test('チャットからSQLと復旧操作を実行できる',()=>{const g=game(
 test('未実施・曖昧な報告はコマンド実行として扱わない',()=>{for(const s of ['job stop ACCOUNT_SYNCを入力していません','コマンドを入力しました','job rerun SALES_IMPORTを実行したい'])assert.equal(parseCommandReport(s),null);});
 test('各段階で3択を提示し、選択のみで正常復旧できる',()=>{const g=game();for(let i=0;i<15&&!g.ended;i++){const choices=nextChoices(g);assert.equal(choices.length,3);chooseAction(g,choices[0]);}assert.equal(g.result,'模範復旧');assert.deepEqual(nextChoices(g),[]);});
 test('3択の無断実行と追加障害の分岐を選べる',()=>{const g=game();chooseAction(g,nextChoices(g)[1]);chooseAction(g,nextChoices(g)[0]);const stop=nextChoices(g).find(c=>c.command==='job stop ACCOUNT_SYNC');assert.ok(stop);chooseAction(g,stop);assert.equal(g.secondary,true);assert.equal(nextChoices(g).length,3);chooseAction(g,nextChoices(g)[0]);const resume=nextChoices(g).find(c=>c.command==='job rerun ACCOUNT_SYNC');chooseAction(g,resume);assert.equal(g.secondary,false);});
-test('すべての選択後に鬼塚が内容に応じて返信する',()=>{const g=game();chooseAction(g,nextChoices(g)[1]);assert.ok(g.timeline.at(-1).sender==='鬼塚｜リーダー');for(let i=0;i<15&&!g.ended;i++){const count=g.timeline.length;chooseAction(g,nextChoices(g)[0]);assert.ok(g.timeline.slice(count).some(m=>m.sender==='鬼塚｜リーダー'));}assert.equal(g.result,'模範復旧');assert.ok(g.timeline.some(m=>m.sender==='鬼塚｜リーダー'&&m.text.includes('どうすんだ')));});
-test('電話の3つの返答にもユーザー報告と鬼塚の指摘が入る',()=>{for(const choice of ['ignore','promise','explain']){const g=game();const count=g.timeline.length;answerCall(g,choice);assert.ok(g.timeline.slice(count).some(m=>m.sender==='あなた'));assert.equal(g.timeline.at(-1).sender,'鬼塚｜リーダー');}});
+test('鬼塚は正常ルートの進展を受け取り、同じ確認には叱責を足さない',()=>{const g=game();for(let i=0;i<15&&!g.ended;i++)chooseAction(g,nextChoices(g)[0]);assert.equal(g.result,'模範復旧');assert.ok(g.timeline.some(m=>m.sender==='鬼塚｜リーダー'&&m.text.includes('受け取った')));});
+test('電話の3つの返答にもユーザー報告と鬼塚の指摘が入る',()=>{for(const choice of ['ignore','promise','explain']){const g=game();const count=g.timeline.length;answerCall(g,choice);assert.ok(g.timeline.slice(count).some(m=>m.sender==='あなた'));assert.ok(g.timeline.slice(count).some(m=>m.sender==='鬼塚｜リーダー'));}});
 test('復旧後の電話は原因調査中へ逆戻りしない',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');answerCall(g,'explain');const report=g.timeline.filter(m=>m.sender==='あなた').at(-1).text;assert.match(report,/正常終了/);assert.doesNotMatch(report,/原因.*調査/);});
 test('承認済みの状況報告は承認待ちにならない',()=>{const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');assert.match(progressText(g),/承認を得ました/);const choice=nextChoices(g).find(c=>c.id==='file-report');chooseAction(g,choice);assert.match(g.messages.customer.at(-1).text,/承認まで完了/);});
 test('誤った復旧時刻の約束を3択で訂正できる',()=>{const g=game();answerCall(g,'promise');const choices=nextChoices(g);assert.equal(choices.length,3);const correction=choices.find(c=>c.id==='progress-report');assert.match(correction.text,/訂正/);chooseAction(g,correction);assert.equal(g.correctionNeeded,false);});
@@ -61,3 +61,46 @@ test('ロック失敗後に再読み込みしても会話と選択肢を保持�
 test('緊急電話と低下したメンタルを保存し、再開時に時間を加算しない',()=>{const g=game();execute(g,'job rerun SALES_IMPORT');tick(g,7);const restored=restoreGame(serializeGame(g));assert.equal(restored.call,true);assert.equal(restored.callReason,g.callReason);assert.equal(restored.mental,g.mental);assert.equal(restored.clock,g.clock);assert.equal(restored.replyIdle,g.replyIdle);answerCall(restored,'explain');assert.equal(restored.call,false);});
 test('復元後の代行履歴も実行者が森として両方の履歴に残る',()=>{let g=game();pick(g,'tail -n 30 /logs/SALES_IMPORT.log');pick(g,'ls -l /data/inbox');pick(g,'file-report');g=restoreGame(serializeGame(g));pick(g,'file-report');assert.equal(g.assistCount,1);assert.ok(g.messages.internal.some(m=>m.sender==='森｜監視'&&m.text==='当日ファイルの確認を連携元にお願いします。'));});
 test('壊れた保存データは例外にせず新規開始へ戻せる',()=>{for(const raw of [null,'{broken','{}',JSON.stringify({version:999}),JSON.stringify({version:1,game:{started:true}})])assert.equal(restoreGame(raw),null);});
+
+const tayama=g=>g.timeline.filter(m=>m.sender==='田山｜ベテラン').map(m=>m.text);
+test('田山は正常ルートで重複せず、検証と復旧を区別して最後に総括する',()=>{
+ const g=readyHard();assert.ok(tayama(g).some(t=>t.includes('検証結果')));assert.ok(tayama(g).every(t=>!t.includes('正常終了まで')&&!t.includes('最終的には復旧')));
+ pick(g,'job rerun SALES_IMPORT');assert.equal(g.recovered,false);assert.match(tayama(g).at(-1),/ロック競合/);assert.doesNotMatch(tayama(g).at(-1),/判断を急|実行前に確認/);
+ for(const c of ["SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';",'release-lock','approve','job rerun SALES_IMPORT','job status SALES_SUMMARY',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';",'internal-complete','complete'])pick(g,c);
+ assert.equal(g.result,'模範復旧');assert.equal(new Set(tayama(g)).size,tayama(g).length);assert.match(tayama(g).at(-1),/最終的には復旧/);
+});
+test('安全な再確認では田山の一般論も鬼塚の誤操作叱責も増やさない',()=>{
+ const g=game();execute(g,'tail -n 30 /logs/SALES_IMPORT.log');const n=tayama(g).length;
+ for(let i=0;i<20;i++)execute(g,'tail -n 30 /logs/SALES_IMPORT.log');
+ assert.equal(tayama(g).length,n);assert.equal(g.mistakes,0);assert.equal(g.trust,100);assert.equal(g.mental,100);assert.equal(g.assistCount,undefined);
+});
+test('別ジョブ誤停止と正しい対象の無承認実行を言い分ける',()=>{
+ const g=game();execute(g,'job stop ACCOUNT_SYNC');assert.match(tayama(g).at(-1),/対象が違えば/);assert.match(g.messages.internal.findLast(m=>m.sender==='鬼塚｜リーダー').text,/正常稼働中の別系統/);
+ const h=game();prepare(h);execute(h,'job rerun SALES_IMPORT');assert.equal(h.recovered,true);assert.match(tayama(h).at(-1),/実施判断の経緯/);assert.doesNotMatch(h.messages.internal.findLast(m=>m.sender==='鬼塚｜リーダー').text,/別系統|対象が違/);
+});
+test('田山への実際の相談だけで責任を返し、連続する言い換えは省く',()=>{
+ const g=game();requestApproval(g,'SALES_IMPORT');assert.equal(tayama(g).length,0);
+ send(g,'internal','実行してよいですか','critic-approval');assert.match(tayama(g).at(-1),/現場のリーダー判断/);const n=tayama(g).length;
+ send(g,'internal','実行してよいですか','critic-approval');assert.equal(tayama(g).length,n);assert.equal(g.approved.size,0);
+ execute(g,'job stop ACCOUNT_SYNC');send(g,'internal','実行してよいですか','critic-approval');assert.match(tayama(g).at(-1),/現物を見ていない/);
+ execute(g,'job rerun SALES_IMPORT');const before=tayama(g).length;send(g,'internal','もう一度相談','critic-approval');assert.equal(tayama(g).length,before);
+});
+test('使用済み台詞は再開後も保持し旧セーブの台詞からも復元する',()=>{
+ let g=game();send(g,'internal','相談','critic-approval');execute(g,'job stop ACCOUNT_SYNC');g=restoreGame(serializeGame(g));send(g,'internal','相談','critic-approval');assert.equal(new Set(tayama(g)).size,tayama(g).length);
+ const raw=JSON.parse(serializeGame(g));delete raw.game.tayamaUsed;delete raw.game.tayamaLastKind;delete raw.game.tayamaLastAction;
+ g=restoreGame(JSON.stringify(raw));assert.ok(g);const n=tayama(g).length;send(g,'internal','相談','critic-approval');assert.equal(tayama(g).length,n);
+});
+test('上席からの要求は先に出来事として提示し、報告は受け止める',()=>{
+ const g=game();pick(g,'tail -n 30 /logs/SALES_IMPORT.log');pick(g,'ls -l /data/inbox');pick(g,'file-report');
+ const eventIndex=g.timeline.findIndex(m=>m.text.includes('上席から状況報告を求められました'));
+ const pressureIndex=g.timeline.findIndex(m=>m.text.includes('今、上から状況'));
+ assert.ok(eventIndex>=0&&pressureIndex>eventIndex);assert.match(g.messages.internal.findLast(m=>m.sender==='鬼塚｜リーダー').text,/受け取った/);assert.equal(g.trust,100);
+});
+test('復旧後の確認済み事項を鬼塚が未確認として聞き直さない',()=>{
+ const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');verify(g);const from=g.timeline.length;pick(g,'job status SALES_SUMMARY');
+ const boss=g.timeline.slice(from).filter(m=>m.sender==='鬼塚｜リーダー').map(m=>m.text).join('');assert.doesNotMatch(boss,/件数は合って|後続についても確認|社内向けにも復旧結果/);assert.match(boss,/社内の復旧報告は受け取って/);
+});
+test('電話で根拠のない約束をした時に顧客の指摘を受けてから田山が評論する',()=>{
+ const g=game();answerCall(g,'promise');assert.match(tayama(g).at(-1),/先方が不安/);const first=tayama(g).length;answerCall(g,'promise');assert.equal(tayama(g).length,first);
+ assert.ok(g.timeline.findIndex(m=>m.sender==='高橋｜顧客'&&m.text.includes('根拠'))<g.timeline.findIndex(m=>m.sender==='田山｜ベテラン'));
+});
