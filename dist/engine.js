@@ -106,3 +106,30 @@ export function tick(g,seconds){
 }
 export function answerCall(g,choice){if(g.ended)return;g.call=false;if(choice==='ignore'){g.trust=Math.max(0,g.trust-5);push(g,'customer','高橋｜顧客','電話に出られないなら、メールで状況を報告してください。');}else if(choice==='promise'){g.trust=Math.max(0,g.trust-15);push(g,'customer','高橋｜顧客','5分で復旧する根拠は何ですか。原因と手順は確認済みですか。');}else{if(!g.callAnswered){g.callAnswered=true;g.replyIdle=0;g.replyLevel=0;}push(g,'customer','高橋｜顧客','調査中、承知しました。次回報告は5分後に。根拠のない復旧時刻は約束しないでください。');}event(g,'顧客の電話に対応');}
 export function time(g){return `${String(Math.floor(g.minutes/60)).padStart(2,'0')}:${String(g.minutes%60).padStart(2,'0')}`;}
+export function nextChoices(g){
+ if(!g.started||g.ended)return [];
+ const command=(label,cmd)=>({label,type:'command',command:cmd,detail:'操作を実施したと報告'});
+ const approval=target=>({label:`${target}の再実行をリーダーに確認する`,type:'approval',target,detail:'社内へ確認'});
+ const mail=(label,id,text)=>({label,type:'message',channel:'customer',id,text,detail:'顧客へメール'});
+ const stop=command('別系統のACCOUNT_SYNCを停止したと報告する','job stop ACCOUNT_SYNC');
+ const rerun=command('SALES_IMPORTを再実行したと報告する','job rerun SALES_IMPORT');
+ const initial=mail('調査中と伝え、5分後の報告を約束する','initial','現在調査中です。影響を確認し、5分後に進捗を報告します。');
+ const complete=mail('正常終了と件数一致を報告して対応を終える','complete','売上取込・後続集計の正常終了と1,248件の一致を確認しました。復旧を報告します。');
+ const file=mail('ファイルの状況と、これからの対応を報告する','file-report',g.file?'当日ファイルが到着しました。内容を検証し、承認後に再実行します。':'当日ファイルの未着を確認しました。連携元への確認を進めています。業務影響は引き続き確認中です。');
+ if(g.secondary)return g.approved.has('ACCOUNT_SYNC')?[command('ACCOUNT_SYNCを再開したと報告する','job rerun ACCOUNT_SYNC'),complete,command('ジョブ一覧を確認したと報告する','job status')]:[approval('ACCOUNT_SYNC'),command('ACCOUNT_SYNCを無断で再開したと報告する','job rerun ACCOUNT_SYNC'),complete];
+ if(!g.facts.log)return [command('異常終了したジョブのログを確認したと報告する','tail -n 30 /logs/SALES_IMPORT.log'),g.reported?stop:initial,rerun];
+ if(!g.facts.files)return [command('受信ファイルの一覧を確認したと報告する','ls -l /data/inbox'),rerun,g.reported?stop:initial];
+ if(!g.file)return [{label:'連携元に当日ファイルの確認を依頼する',type:'message',channel:'internal',id:'request-file',text:'当日ファイルの確認を連携元にお願いします。',detail:'社内へ連絡'},rerun,file];
+ if(!g.facts.checked)return [command('到着した当日ファイルを検証したと報告する','check /data/inbox/sales_20261012.csv'),rerun,file];
+ if(!g.facts.history)return [command('SQLで当日の処理履歴を確認したと報告する',"SELECT * FROM batch_history WHERE business_date = '20261012';"),rerun,stop];
+ if(!g.recovered)return g.approved.has('SALES_IMPORT')?[rerun,file,stop]:[approval('SALES_IMPORT'),{...rerun,label:'承認を取らずSALES_IMPORTを再実行したと報告する'},file];
+ if(!g.facts.summary)return [command('後続の売上集計を確認したと報告する','job status SALES_SUMMARY'),complete,rerun];
+ if(!g.facts.count)return [command('SQLで当日の処理件数を確認したと報告する',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';"),complete,stop];
+ return [complete,command('後続ジョブの状態をもう一度確認する','job status SALES_SUMMARY'),rerun];
+}
+export function chooseAction(g,choice){
+ if(!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
+ else if(choice.type==='approval')requestApproval(g,choice.target);
+ else send(g,choice.channel,choice.text,choice.id);
+}
