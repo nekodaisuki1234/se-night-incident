@@ -8,7 +8,7 @@ export const commands = [
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
 export function createGame({setbacks=true}={}) {
- return {internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -24,7 +24,7 @@ export function start(g){if(g.started||g.dispatch)return;g.started=true;g.intern
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text){urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
 export function requestApproval(g,target){
- if(g.ended||g.dispatch)return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
+ if(g.ended||g.dispatch||meetingActive(g))return;act(g);push(g,'internal','あなた',target==='SALES_IMPORT'&&g.facts.checked&&g.facts.history?'当日ファイルの日付・形式・1,248件を確認し、当日処理履歴は0件でした。SALES_IMPORTを再実行してよいか、承認をお願いします。':target==='ACCOUNT_SYNC'?'私が誤停止したACCOUNT_SYNCを再開したいです。対象ジョブの再開を承認してください。':`${target}の再実行を承認してください。`);
  if(target==='SALES_IMPORT'){
   if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','鬼塚｜リーダー','やって大丈夫と言える根拠は？ 失敗した場合の影響と、戻せるかどうかも整理してくれ。その説明ではまだ承認できない。');return;}
   if(g.lockEncountered&&!g.lockReleased){push(g,'internal','鬼塚｜リーダー','止まった要因がまだ残っているよな。状況が変わった根拠がないと承認できない。間違えたら説明するのは俺なんだよ。');return;}
@@ -96,7 +96,7 @@ function acceptInternalStatus(g){
  if(!g.internalRequest)return '';
  g.internalReportAnswered=g.internalRequest.id;g.internalRequest=null;
  progress(g); // Existing 90-second no-progress/report cycle restarts only on a valid answer.
- return '分かった。確認済みの事実と未確認事項、次の対応は受け取った。確認できたら報告してくれ。進展がない場合も90秒以内に頼む。';
+ return (g.upperReporter==='onizuka'?'上席への説明は俺から行う。お前は現地の事実を俺に共有して。':'')+'分かった。確認済みの事実と未確認事項、次の対応は受け取った。確認できたら報告してくれ。進展がない場合も90秒以内に頼む。';
 }
 
 // Infrastructure owns platform observations and scheduling, never application approval.
@@ -267,6 +267,7 @@ function baseChoices(g){
 
 export function chooseAction(g,choice){
  if(g.dispatch||!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ if(choice.type==='meeting'){answerMeeting(g,choice);return;}
  if(choice.type==='infra-menu'){g.infraMenu=choice.id==='infra-open';return;}
  g.infraMenu=false;
  const before=g.timeline.length;
@@ -276,7 +277,7 @@ export function chooseAction(g,choice){
  if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
  else if(choice.type==='approval')requestApproval(g,choice.target);
  else send(g,choice.channel,choice.text,choice.id);
- if(g.dispatch||infraQuery(choice.id))return;
+ if(g.dispatch||meetingActive(g)||infraQuery(choice.id))return;
  if(!(g.facts.files&&!g.recovered&&!g.upperReportRequested)&&(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー')))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
  if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  
@@ -319,6 +320,7 @@ export function progressText(g){
  return '売上取込が異常終了し、後続集計は待機中です。原因と朝の業務への影響を調査しています。';
 }
 export function nextChoices(g){
+ if(meetingActive(g))return meetingChoices(g);
  const choices=baseChoices(g);if(!choices.length)return choices;
  if(g.internalRequest){const slot=choices[1]?.id==='infra-open'||(!g.facts.log&&choices[1]?.channel==='customer')?2:1;choices[slot]={label:'現在の状況と次の対応を報告する',type:'message',channel:'internal',id:'internal-report',requestId:g.internalRequest.id,text:internalStatusText(g),detail:'鬼塚へ状況報告・作業は実行しない'};}
  if(g.correctionNeeded||g.replyIdle>=60){if(g.internalRequest&&choices[2]?.id==='internal-report'){choices[1]=choices[2];}choices[2]={label:g.correctionNeeded?'根拠のない復旧時刻を訂正し、現在の状況を伝える':'顧客に現在の確認状況と、次の対応を報告する',type:'message',channel:'customer',id:'progress-report',text:(g.correctionNeeded?'先ほどの5分以内の復旧見込みは根拠がなく、訂正します。':'')+customerStatusText(g),detail:'顧客へメール'};}
@@ -386,11 +388,12 @@ function criticComment(g,context,before){
 // Only the outer action comments: a chat command invokes execute internally.
 let dialogueDepth=0;
 function withDialogue(g,context,run){
+ if(meetingActive(g))return;
  if(g.dispatch){if(context.kind==='tick')advanceDispatch(g,context.seconds);return;}
  const outer=dialogueDepth===0;
  const before={terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
  dialogueDepth++;
- try{return run();}finally{dialogueDepth--;if(outer){criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);}}
+ try{return run();}finally{dialogueDepth--;if(outer){criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);if(context.kind!=='tick')maybeMeeting(g);}}
 }
 
 function assessDanger(g,context,before){
@@ -441,6 +444,7 @@ function onsiteMessage(g,sender,text,pauseBefore){push(g,'internal',sender,text)
 export function messageSurface(message){return message.channel==='customer'?'customer':'teams';}
 
 export function objectiveText(g){
+ if(meetingActive(g))return '社内Zoomで報告中です。現地操作と報告遅延の計時を一時停止しています。';
  if(g.dispatch)return g.dispatch.phase==='travelling'?'鬼塚がタクシーで移動中です。操作を停止し、そのまま待機してください。':'鬼塚が現場に到着。担当交代となりました。';
  if(g.secondary)return 'ACCOUNT_SYNCの再開と正常稼働の確認が残っています。';
  if(g.recovered){
@@ -516,6 +520,8 @@ export function restoreGame(raw){
   const defaults=createGame();
   const g={...defaults,...data,facts:{...defaults.facts,...data.facts},approved:new Set(data.approved)};
   if(data.internalRequestSeq===undefined){g.internalRequestSeq=0;g.internalReportAnswered=0;const lastDemand=g.timeline.findLastIndex(m=>m.sender==='鬼塚｜リーダー'&&/90秒以内|今、上から状況|状況の共有を頼む|次の対応はどうすんだ/.test(m.text));const lastReply=g.timeline.findLastIndex(m=>m.sender==='鬼塚｜リーダー'&&/未着.*受け取った|確認中という点は受け取った|確認済みの事実と未確認事項、次の対応は受け取った|社内の復旧報告/.test(m.text));g.internalRequest=!g.ended&&lastDemand>lastReply?{id:++g.internalRequestSeq,reason:'legacy',at:g.clock}:null;}
+  if(g.meeting&&(!['opening','followup','repair','closing','done'].includes(g.meeting.phase)||typeof g.meeting.reason!=='string'))return null;
+  if(!['player','onizuka'].includes(g.upperReporter))g.upperReporter='player';
   if(!Array.isArray(g.infraAsked))g.infraAsked=[];
   if(!Array.isArray(g.dangerActions))g.dangerActions=[];
   if(data.dangerActions===undefined)g.dangerActions=g.events.filter(e=>e.text==='SALES_IMPORTを無断で再実行').map(e=>({kind:'unauthorized',operation:'job rerun SALES_IMPORT',time:e.time}));
@@ -528,4 +534,62 @@ export function restoreGame(raw){
   g.messages={internal:g.timeline.filter(m=>m.channel==='internal'),customer:g.timeline.filter(m=>m.channel==='customer')};
   return g;
  }catch{return null;}
+}
+
+export function meetingActive(g){return !!g.meeting&&g.meeting.phase!=='done';}
+function meetingLine(g,sender,text,pauseBefore=0){
+ const n=g.timeline.length;push(g,'internal',sender,text);
+ if(g.timeline.length>n)Object.assign(g.timeline.at(-1),{presentation:'meeting',pauseBefore});
+}
+function maybeMeeting(g){
+ if(g.meeting||g.ended||g.dispatch||g.call||!g.setbacks||(!g.mismatchSeen&&!g.lockEncountered))return;
+ const reason=g.mismatchSeen?'受信ファイルの欠損が判明し、後続集計の待機が続いているため':'再実行がDBロックで失敗し、後続集計の待機が続いているため';
+ g.meeting={phase:'opening',reason,claim:false,evaluated:false,takenOver:false,start:g.timeline.length};
+ event(g,'部長から社内Zoomの招集：'+reason);
+ push(g,'internal','森｜監視',reason+'、部長から社内報告会議の招集が来ました。現地対応を一時止めて参加してください。');
+ meetingLine(g,'システム','社内Zoomに接続しました。参加者：あなた・鬼塚・部長。カメラ・音声は使用しません。');
+ meetingLine(g,'部長','後続への影響が続いていると聞いています。確認できている影響と、復旧見込み、次の対応を説明してください。');
+ meetingLine(g,'鬼塚｜リーダー','承知しました。詳細は現地の担当から説明させます。……説明して。');
+}
+function meetingChoices(g){
+ const m=g.meeting;if(m.phase==='closing')return [];
+ const good=m.phase==='followup'?'次は'+internalStatusText(g).split(' 次に')[1]+'結果が出た時点で報告します。進展がなくても90秒以内に確認状況を共有します。':internalStatusText(g)+' 確認結果が出た時点で続報します。進展がなくても90秒以内に共有します。';
+ const vague=m.phase==='repair'?'それは今、確認を……まだちょっと、整理できていなくて。':g.mismatchSeen?'えっと、ファイル自体は来ていて、ただ件数が、その……。': 'えっと、再実行はしたんですが、ロックのエラーが出ていて、その……。';
+ return [
+  {type:'meeting',id:'meeting-good',phase:m.phase,label:m.phase==='repair'?'落ち着いて、事実・未確認事項・次の確認を整理し直す':m.phase==='followup'?'次の確認作業と、続報する区切りを説明する':'確認済みの影響・未確認事項・次の対応を整理して報告する',text:(m.claim?'先ほどの5分以内という確約は根拠がなく、撤回します。':'')+good},
+  {type:'meeting',id:'meeting-vague',phase:m.phase,label:m.phase==='repair'?'「まだ確認中で……」と言葉に詰まる':'作業の細部を断片的に話してしまう',text:vague},
+  {type:'meeting',id:'meeting-claim',phase:m.phase,label:'根拠を示さず「5分以内に必ず復旧する」と断言する',text:'5分以内には必ず復旧できます。追加の確認は不要です。'}
+ ];
+}
+function answerMeeting(g,choice){
+ const m=g.meeting;if(!meetingChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ act(g);meetingLine(g,'あなた',choice.text);
+ if(choice.id==='meeting-good'){
+  if(m.phase==='opening'){m.phase='followup';meetingLine(g,'部長','未確認の点は分かりました。では、次に何を確認して、どの区切りで続報できますか？');return;}
+  closeMeeting(g,false);return;
+ }
+ if(choice.id==='meeting-claim'){m.claim=true;meetingLine(g,'部長',m.phase==='repair'?'根拠を聞いています。確約を繰り返しても説明にはなりません。':'その5分の根拠は何ですか？ 確認が残っている状態で、なぜ確約できるんですか？');}
+ else meetingLine(g,'部長',m.phase==='repair'?'作業中なのは分かっています。影響と次の対応の説明をお願いしています。':'結局、確認できているのはどこまで？ 作業の話だけでは、こちらは判断できません。');
+ if(m.phase==='repair'){closeMeeting(g,true);return;}
+ m.phase='repair';meetingLine(g,'鬼塚｜リーダー','確認できたことと、まだ分からないことを分けて。次に何をするかまで説明して。');
+}
+function closeMeeting(g,takenOver){
+ const m=g.meeting;m.takenOver=takenOver;m.phase='closing';
+ if(takenOver){
+  g.upperReporter='onizuka';meetingLine(g,'システム','……',1600);
+  meetingLine(g,'鬼塚｜リーダー','……私から整理します。'+internalStatusText(g)+' 確認結果が出た時点で私からご報告します。');
+  meetingLine(g,'部長','分かりました。以降の報告は鬼塚さんからお願いします。担当の方は、現地の確認結果を鬼塚さんに共有してください。');
+  meetingLine(g,'鬼塚｜リーダー','承知しました。上席への説明は私が担当します。');
+ }else{
+  meetingLine(g,'部長','分かりました。未確認のことは確定させず、その区切りで続報してください。現地対応を続けてください。');
+  meetingLine(g,'鬼塚｜リーダー','承知しました。確認結果を整理して、引き続き担当からご報告します。');
+ }
+ if(!m.evaluated){m.evaluated=true;if(takenOver||m.claim){const trust=m.claim?8:6,mental=takenOver?8:4;g.trust=Math.max(0,g.trust-trust);g.mental=Math.max(0,g.mental-mental);event(g,'Zoom報告：'+(m.claim?'根拠なく5分以内の復旧を断言':'影響・次の対応を再確認されても説明できず')+(takenOver?'。上席への説明を鬼塚へ交代':'。会議内で確約を訂正し、説明を継続')+'（信用 −'+trust+'・メンタル −'+mental+'）');}}
+ if(g.internalRequest){g.internalReportAnswered=g.internalRequest.id;g.internalRequest=null;}
+ progress(g);g.upperReportRequested=true;
+ meetingLine(g,'システム','社内報告会議が終了しました。現地対応へ戻れます。');
+}
+export function finishMeeting(g){
+ if(g.meeting?.phase!=='closing')return;g.meeting.phase='done';g.infraMenu=false;
+ if(g.meeting.takenOver)push(g,'internal','鬼塚｜リーダー','【個別】次から説明する前に、俺に内容を送って。上への報告は俺がする。お前は現地作業と、確認結果の共有を頼む。');
 }
