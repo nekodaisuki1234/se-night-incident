@@ -287,3 +287,23 @@ export function customerStatusText(g){
  const estimate=g.recovered?(g.facts.summary&&g.facts.count?'取込と後続の復旧、処理件数の一致まで確認済みです。':'取込は正常終了しましたが、復旧完了時刻は後続と件数の確認後に確定します。'):g.lockEncountered&&!g.lockReleased?'DBロックが解消しておらず、復旧時刻は未定です。':g.fileRequested&&!g.file?'ファイルの到着時刻が未定のため、復旧時刻も未定です。':'残作業の完了を確認していないため、復旧時刻はまだ確約できません。';
  return progressText(g)+' '+impact+' '+estimate+(g.secondary?' 口座同期の追加影響件数は別途調査中です。':'');
 }
+
+export function serializeGame(g){
+ return JSON.stringify({version:1,game:{...g,approved:[...g.approved]}});
+}
+export function restoreGame(raw){
+ try{
+  const saved=JSON.parse(raw);if(saved?.version!==1)return null;
+  const data=saved.game;
+  if(!data||data.started!==true||typeof data.ended!=='boolean'||!Array.isArray(data.approved)||data.approved.some(x=>!['SALES_IMPORT','ACCOUNT_SYNC'].includes(x)))return null;
+  if(!data.facts||!Array.isArray(data.timeline)||!Array.isArray(data.events)||!Array.isArray(data.terminal))return null;
+  for(const key of ['minutes','trust','mental','actions','clock','techIdle','replyIdle'])if(!Number.isFinite(data[key])||data[key]<0)return null;
+  if(data.trust>100||data.mental>100)return null;
+  if(data.timeline.some(m=>!m||typeof m.sender!=='string'||typeof m.text!=='string'||!Number.isFinite(m.time)||!['internal','customer','operations'].includes(m.channel)))return null;
+  const defaults=createGame();
+  const g={...defaults,...data,facts:{...defaults.facts,...data.facts},approved:new Set(data.approved)};
+  // Both histories must point at the same messages when a colleague takes over.
+  g.messages={internal:g.timeline.filter(m=>m.channel==='internal'),customer:g.timeline.filter(m=>m.channel==='customer')};
+  return g;
+ }catch{return null;}
+}
