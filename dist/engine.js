@@ -78,7 +78,7 @@ export class RuleBasedProvider {
    if(id==='resend-file'){if(!g.mismatchSeen)return '再送の根拠がまだありません。まず受信ファイルを検証してください。';g.fileDamaged=false;g.mismatchSeen=false;g.facts.checked=false;g.facts.history=false;g.approved.delete('SALES_IMPORT');g.fileAt=g.minutes;progress(g);event(g,'欠損を連携元へ伝え、完全なファイルを再受信');return '欠損件数とチェックサム不一致を連携元に伝えました。完全なファイルを再受信しました。差し替えたので、内容と未処理状態を確認し直してください。';}
    if(id==='patch-file'){penalty(g,'勝手にデータを書き換えたのか？ お前、それで何かあったらどう説明するんだ？');return takeTayama(g,'patch',true);}
    if(id==='release-lock'){if(!g.lockInspected)return '保持元が分かっていない状態では解除できません。待機セッションを確認してください。';g.lockReleased=true;g.approved.delete('SALES_IMPORT');progress(g);event(g,'DB担当がREPORT_EXPORTの残存セッションを確認してロック解除');return 'DB担当に確認しました。REPORT_EXPORTは処理終了後のセッションだけが残っていました。担当側で終了し、ロック解除を確認しました。';}
-   if(id==='critic-approval'){const issue=consultationIssue(g);if(!issue||consulted(g,issue))return '';g.tayamaConsulted=[...(g.tayamaConsulted||[]),issue];return takeTayama(g,issue==='missing-row'?'consultMissing':'consultLock',true);}
+   if(id==='critic-approval'){const issue=consultationIssue(g);if(!issue||consulted(g,issue))return '';g.tayamaConsulted=[...(g.tayamaConsulted||[]),issue];const reply=takeTayama(g,issue==='missing-row'?'consultMissing':'consultLock',true);if(reply){const damage=Math.min(5,g.mental);g.mental-=damage;g.tayamaMentalDamage=(g.tayamaMentalDamage||0)+damage;event(g,'田山に具体策を聞いたが一般論で返された（メンタル −'+damage+'）');}return reply;}
    if(id==='ack'){if(!g.ack){g.ack=true;progress(g);}return '分かった。で、どうすんだ？ お前の考えを聞いてるんだが。';}
    if(id==='request-file'){
     if(!g.facts.log||!g.facts.files)return 'ファイル未着と判断した根拠を確認してください。ログと受信ディレクトリの両方が必要です。';
@@ -97,7 +97,7 @@ export class RuleBasedProvider {
   }
   if(id==='complete'){
    if(!(g.recovered&&(!g.setbacks||g.lockReleased)&&g.facts.summary&&g.facts.count&&g.internalReported&&!g.secondary)){g.trust=Math.max(0,g.trust-12);event(g,'検証がそろう前に復旧報告');return 'まだ復旧完了として受け取れません。'+objectiveText(g);}
-   g.replyIdle=0;finish(g,g.hadSecondary?'二次障害からの生還':g.mistakes||g.mental<100||g.trust<85?'復旧したが要反省':'模範復旧');return '正常終了と件数一致を確認しました。対応ありがとうございました。操作経緯は報告書に残してください。';
+   g.replyIdle=0;finish(g,g.hadSecondary?'二次障害からの生還':g.mistakes||g.mental+(g.tayamaMentalDamage||0)<100||g.trust<85?'復旧したが要反省':'模範復旧');return '正常終了と件数一致を確認しました。対応ありがとうございました。操作経緯は報告書に残してください。';
   }
   return 'その報告だけでは状況を判断できません。初版では定型文で現状・次の対応を報告してください。';
  }
