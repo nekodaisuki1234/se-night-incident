@@ -286,7 +286,7 @@ test('序盤の一次報以外は社内共有も含め優先指示違反とし�
  for(const choiceId of ['internal-report','log']){
   let g=createGame({setbacks:false});start(g);
   const choice=nextChoices(g).find(c=>choiceId==='log'?c.command?.startsWith('tail'):choiceId==='rerun'?c.command==='job rerun SALES_IMPORT':c.id===choiceId);
-  assert.ok(choice);chooseAction(g,choice);assert.equal(g.firstReportDelegated,true);assert.equal(g.reported,true);
+  assert.ok(choice);chooseAction(g,choice);if(choiceId==='internal-report'){assert.ok(!g.timeline.some(m=>m.text.startsWith('分かった。確認済み')));assert.equal(g.internalRequest,null);}assert.equal(g.firstReportDelegated,true);assert.equal(g.reported,true);
   assert.equal(g.events.filter(e=>e.text.includes('信用-5・メンタル-5')).length,1);
   if(choiceId!=='rerun'){assert.equal(g.trust,95);assert.equal(g.mental,95);assert.equal(g.mistakes,0);assert.equal(g.dispatch,null);}
   g=restoreGame(serializeGame(g));execute(g,'tail -n 30 /logs/SALES_IMPORT.log');
