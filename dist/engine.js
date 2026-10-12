@@ -20,12 +20,12 @@ function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
 function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
 function endForDeadline(g){
- if(g.ended||g.dispatch||g.managerEnding||!g.infraDeadline||g.minutes<=180)return false;
+ if(g.ended||g.dispatch||g.managerEnding||!g.infraDeadline||g.minutes<=285)return false;
  g.deadlineEnded=true;g.call=false;g.callReason=null;if(g.meeting)g.meeting.phase='done';
  finish(g,'GAME OVER：復旧期限超過');
- push(g,'internal','システム','03:00の復旧期限を超過しました。現地対応を終了します。');
+ push(g,'internal','システム','04:45の復旧期限を超過しました。現地対応を終了します。');
  push(g,'internal','鬼塚｜リーダー','顛末書を提出してくれ。これから1ヶ月、なぜなぜ分析だ。');
- event(g,'復旧期限03:00を超過。顛末書提出・1ヶ月のなぜなぜ分析');return true;
+ event(g,'復旧期限04:45を超過。顛末書提出・1ヶ月のなぜなぜ分析');return true;
 }
 function act(g,minutes=10){g.actions++;g.minutes+=minutes;return !endForDeadline(g);}
 export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
@@ -119,13 +119,13 @@ function infraStage(g){
 }
 function infraAsked(g,id){return (g.infraAsked||[]).includes(infraStage(g)+':'+id);}
 function infraDeadlineText(g){
- return g.minutes<180?'なお、03:15の朝次配信に向けた03:00の復旧期限は変わりません。':'なお、03:00の復旧期限は過ぎています。03:15の朝次配信への影響を運用側で確認しますので、アプリ側で現状と見込みをご連絡ください。';
+ return g.minutes<285?'なお、05:00の早朝配信に向けた04:45の復旧期限は変わりません。':'なお、04:45の復旧期限は過ぎています。05:00の早朝配信への影響を運用側で確認しますので、アプリ側で現状と見込みをご連絡ください。';
 }
 function announceInfrastructure(g){
  if(!g.started||g.ended||g.dispatch||g.recovered||!g.facts.log||g.infraDeadline)return;
- g.infraDeadline={recovery:180,downstream:195};
- push(g,'internal',INFRA,'インフラ担当の佐伯です。運用側から遠隔で参加します。取込→売上集計の結果を使う別運用枠の朝次配信ジョブは03:15開始予定です。'+(g.minutes<180?'確認と引き渡しの時間が必要なため、取込・売上集計は03:00までに復旧をお願いします。この時刻を超えると後続の運用スケジュールに影響します。':'取込・売上集計の復旧期限03:00を過ぎています。後続の運用スケジュールへの影響を確認しますので、現状と見込みを共有してください。'));
- event(g,'インフラから03:00復旧要求（03:15朝次配信の準備・引き渡しに必要）');
+ g.infraDeadline={recovery:285,downstream:300};
+ push(g,'internal',INFRA,'インフラ担当の佐伯です。運用側から遠隔で参加します。取込→売上集計の結果を使う別運用枠の早朝配信ジョブは05:00開始予定です。'+(g.minutes<285?'確認と引き渡しの時間が必要なため、取込・売上集計は04:45までに復旧をお願いします。この時刻を超えると後続の運用スケジュールに影響します。':'取込・売上集計の復旧期限04:45を過ぎています。後続の運用スケジュールへの影響を確認しますので、現状と見込みを共有してください。'));
+ event(g,'インフラから04:45復旧要求（05:00早朝配信の準備・引き渡しに必要）');
 }
 function infrastructureReply(g,id){
  const stage=infraStage(g);if(!stage||infraAsked(g,id))return '';
@@ -529,6 +529,7 @@ export function restoreGame(raw){
   if(data.timeline.some(m=>!m||typeof m.sender!=='string'||typeof m.text!=='string'||!Number.isFinite(m.time)||!['internal','customer','operations'].includes(m.channel)))return null;
   const defaults=createGame();
   const g={...defaults,...data,facts:{...defaults.facts,...data.facts},approved:new Set(data.approved)};
+  if(!g.ended&&g.infraDeadline?.recovery===180){g.infraDeadline={recovery:285,downstream:300};push(g,'internal',INFRA,'後続の早朝配信ジョブは05:00開始に変更です。確認・引き渡しのため、復旧期限を04:45に変更します。');}
   if(data.internalRequestSeq===undefined){g.internalRequestSeq=0;g.internalReportAnswered=0;const lastDemand=g.timeline.findLastIndex(m=>m.sender==='鬼塚｜リーダー'&&/90秒以内|今、上から状況|状況の共有を頼む|次の対応はどうすんだ/.test(m.text));const lastReply=g.timeline.findLastIndex(m=>m.sender==='鬼塚｜リーダー'&&/未着.*受け取った|確認中という点は受け取った|確認済みの事実と未確認事項、次の対応は受け取った|社内の復旧報告/.test(m.text));g.internalRequest=!g.ended&&lastDemand>lastReply?{id:++g.internalRequestSeq,reason:'legacy',at:g.clock}:null;}
   if(g.managerEnding){if(typeof g.managerEnding.operation!=='string'||typeof g.managerEnding.impact!=='string'||!['sequence','blackout'].includes(g.managerEnding.phase))return null;g.ended=true;g.result='二次障害';g.dispatch=null;g.call=false;g.callReason=null;}
   if(g.meeting&&(!['opening','followup','repair','closing','done'].includes(g.meeting.phase)||typeof g.meeting.reason!=='string'))return null;
@@ -633,6 +634,6 @@ function delegateFirstReport(g,before){
 export function advanceIncidentTime(g,seconds){}
 export function deadlineText(g){
  if(!g.infraDeadline)return '';
- const remaining=180-g.minutes;
- return remaining>0?'3時まであと'+remaining+'分':remaining===0?'3時まであと0分':'3時の復旧期限を超過';
+ const remaining=285-g.minutes;
+ return remaining>0?'4時45分まであと'+remaining+'分':remaining===0?'4時45分まであと0分':'4時45分の復旧期限を超過';
 }

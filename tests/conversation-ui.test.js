@@ -56,5 +56,5 @@ test('返答演出中はヘッダー時刻と残り時間が進まない',()=>{
 });
 
 test('期限終了は会話を読み終えてから結果を手動表示する',async()=>{
- const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');visible=g.timeline.length;render();g.minutes=179;execute(g,'job status');playReplies();");await h.drain();assert.equal(h.el('deadline').textContent,'3時の復旧期限を超過');assert.equal(h.el('result').open,false);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);assert.match(h.el('result-summary').textContent,/顛末書.*1ヶ月のなぜなぜ分析/);
+ const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');visible=g.timeline.length;render();g.minutes=284;execute(g,'job status');playReplies();");await h.drain();assert.equal(h.el('deadline').textContent,'4時45分の復旧期限を超過');assert.equal(h.el('result').open,false);h.el('choices').children[0].onclick();assert.equal(h.el('result').open,true);assert.match(h.el('result-summary').textContent,/顛末書.*1ヶ月のなぜなぜ分析/);
 });
