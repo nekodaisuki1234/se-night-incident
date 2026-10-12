@@ -1,7 +1,12 @@
-import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText} from './engine.js';
+import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame} from './engine.js';
 const $=id=>document.getElementById(id);let g=createGame(),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0;
 function item(tag,text,cls){const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;}
 function ring(){if(!sound||!audio)return;try{const now=audio.currentTime;for(let i=0;i<4;i++){const o=audio.createOscillator(),v=audio.createGain();o.frequency.value=i%2?660:880;v.gain.setValueAtTime(0,now+i*.2);v.gain.linearRampToValueAtTime(.04,now+i*.2+.02);v.gain.linearRampToValueAtTime(0,now+i*.2+.15);o.connect(v);v.connect(audio.destination);o.start(now+i*.2);o.stop(now+i*.2+.16);}}catch{}}
+const SAVE_KEY='se-night-incident-progress-v1';
+function saveProgress(){if(!g.started)return;try{localStorage.setItem(SAVE_KEY,serializeGame(g));localStorage.setItem(SAVE_KEY+'-sound',JSON.stringify(sound));$('save-status').textContent='自動保存済み';}catch{$('save-status').textContent='このブラウザでは進行状況を保存できません';}}
+function restoreProgress(){try{const saved=restoreGame(localStorage.getItem(SAVE_KEY));if(saved){g=saved;visible=g.timeline.length;const preference=JSON.parse(localStorage.getItem(SAVE_KEY+'-sound')??'true');sound=preference!==false;for(const id of ['sound','mute'])$(id).textContent='通知・着信音：'+(sound?'オン':'オフ');$('save-status').textContent='前回の続きから再開しました';return true;}}catch{}return false;}
+function enableAudio(){if(!sound)return;try{if(!audio)audio=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume().catch(()=>{});}catch{}}
+document.addEventListener('pointerdown',enableAudio,{passive:true});
 const labels={internal:'社内',customer:'顧客メール',operations:'操作報告'};
 function scrollLatest(){window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'});$('new-messages').hidden=true;}
 function render(){
@@ -15,21 +20,22 @@ function render(){
  if(g.call&&(!g.ended||g.callReason)&&!$('approval').open&&!paused&&!busy&&!$('customer-mail').open){$('call-script').textContent=g.callReason||'影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務に間に合うんですか？';if(!$('call').open)$('call').showModal();if(!rung){ring();rung=true;}}else if(!g.call)rung=false;
 }
 function resizeComposer(){document.documentElement.style.setProperty('--composer-height',`${Math.ceil(document.querySelector('.composer').getBoundingClientRect().height)}px`);}
-function renderChoices(){const choices=nextChoices(g),key=JSON.stringify(choices)+busy;if(key===choiceKey)return;choiceKey=key;const buttons=choices.map((choice,i)=>{const b=item('button','','choice');b.type='button';b.disabled=busy;b.append(item('span',String(i+1),'choice-number'),item('span',(choice.channel==='customer'?'✉ 顧客メール：':'')+choice.label,'choice-label'));b.onclick=()=>{if(busy)return;chooseAction(g,choice);playReplies(choice.channel==='customer');};return b;});$('choices').replaceChildren(...buttons);resizeComposer();}
-$('start').onclick=()=>{try{audio=new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch{}$('intro').close();start(g);last=Date.now();playReplies();resizeComposer();};
-document.querySelectorAll('[data-call]').forEach(b=>b.onclick=()=>{if(busy)return;answerCall(g,b.dataset.call);$('call').close();playReplies(true);});
+function renderChoices(){const choices=nextChoices(g),key=JSON.stringify(choices)+busy;if(key===choiceKey)return;choiceKey=key;const buttons=choices.map((choice,i)=>{const b=item('button','','choice');b.type='button';b.disabled=busy;b.append(item('span',String(i+1),'choice-number'),item('span',(choice.channel==='customer'?'✉ 顧客メール：':'')+choice.label,'choice-label'));b.onclick=()=>{if(busy)return;chooseAction(g,choice);saveProgress();playReplies(choice.channel==='customer');};return b;});$('choices').replaceChildren(...buttons);resizeComposer();}
+$('start').onclick=()=>{try{audio=new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch{}$('intro').close();start(g);saveProgress();last=Date.now();playReplies();resizeComposer();};
+document.querySelectorAll('[data-call]').forEach(b=>b.onclick=()=>{if(busy)return;answerCall(g,b.dataset.call);saveProgress();$('call').close();playReplies(true);});
 $('guide-toggle').onclick=()=>{$('guide').hidden=!$('guide').hidden;};
 $('pause').onclick=()=>{if(!g.started||g.ended)return;paused=true;$('paused').showModal();};$('resume').onclick=()=>{paused=false;last=Date.now();$('paused').close();render();};
-for(const id of ['sound','mute'])$(id).onclick=()=>{sound=!sound;for(const i of ['sound','mute'])$(i).textContent='通知・着信音：'+(sound?'オン':'オフ');};
+for(const id of ['sound','mute'])$(id).onclick=()=>{sound=!sound;if(sound)enableAudio();saveProgress();for(const i of ['sound','mute'])$(i).textContent='通知・着信音：'+(sound?'オン':'オフ');};
 function openCustomerMail(){customerUnread=0;$('mail-badge').hidden=true;if(!$('customer-mail').open)$('customer-mail').showModal();$('mail-log').scrollTop=$('mail-log').scrollHeight;}
 $('open-mail').onclick=openCustomerMail;
 $('close-mail').onclick=()=>{$('customer-mail').close();last=Date.now();render();};
 $('customer-mail').addEventListener('cancel',()=>{last=Date.now();});
-$('retry').onclick=()=>location.reload();$('new-messages').onclick=scrollLatest;
+$('retry').onclick=()=>{g=createGame();try{localStorage.removeItem(SAVE_KEY);}catch{}location.reload();};$('new-messages').onclick=scrollLatest;
 new ResizeObserver(resizeComposer).observe(document.querySelector('.composer'));
 for(const id of ['intro','call','result','paused'])$(id).addEventListener('cancel',e=>e.preventDefault());
-document.addEventListener('visibilitychange',()=>{last=Date.now();});
-setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!busy&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
+document.addEventListener('visibilitychange',()=>{saveProgress();last=Date.now();});
+window.addEventListener('pagehide',saveProgress);
+setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!busy&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function playReplies(showCustomerReply=false){
  if(busy)return;busy=true;renderChoices();
@@ -45,7 +51,7 @@ async function playReplies(showCustomerReply=false){
   $('typing').hidden=true;visible=rendered+1;render();requestAnimationFrame(scrollLatest);
  }}finally{busy=false;last=Date.now();$('typing').hidden=true;if(showCustomerReply&&!g.ended&&!g.callReason)openCustomerMail();render();resizeComposer();}
 }
-$('intro').showModal();render();resizeComposer();
+const resumed=restoreProgress();if(!resumed)$('intro').showModal();render();resizeComposer();if(resumed)requestAnimationFrame(scrollLatest);
 
 // An original two-note notification inspired by workplace chat apps.
 function chatSound(){if(!sound||!audio||document.hidden||paused)return;try{const now=audio.currentTime;for(const [i,freq] of [880,1174.66].entries()){const o=audio.createOscillator(),v=audio.createGain();o.type='sine';o.frequency.value=freq;v.gain.setValueAtTime(0,now+i*.12);v.gain.linearRampToValueAtTime(.035,now+i*.12+.012);v.gain.exponentialRampToValueAtTime(.001,now+i*.12+.2);o.connect(v);v.connect(audio.destination);o.start(now+i*.12);o.stop(now+i*.12+.22);}}catch{}}
