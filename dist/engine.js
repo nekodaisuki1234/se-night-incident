@@ -80,15 +80,15 @@ export class RuleBasedProvider {
    }
    return '自由入力の意図を特定できませんでした。初版では定型文か、対象を指定した承認ボタンを使ってください。';
   }
-  if(id==='initial'){if(!g.reported){g.reported=true;g.replyIdle=0;g.replyLevel=0;}return '承知しました。復旧見込みは根拠がそろってから回答してください。次の確認が取れたら、進捗を報告してください。';}
-  if(id==='progress-report'){g.correctionNeeded=false;const signature=progressText(g);if(g.lastProgress!==signature){g.lastProgress=signature;g.replyIdle=0;g.replyLevel=0;}return '現在の確認状況、承知しました。確認できた事実と残っている作業を分けて、引き続き報告してください。';}
-  if(id==='file-report'){
-   if(!g.facts.log||!g.facts.files){g.trust=Math.max(0,g.trust-8);return '未着と断定する根拠を確認していますか。ログとファイル一覧を見てから報告してください。';}
-   if(!g.file){if(!g.missingReported){g.missingReported=true;g.replyIdle=0;g.replyLevel=0;}return '連携元への確認を進めてください。朝の業務への影響はまだ確定していないという理解です。';}
-   if(!g.fileReported){g.fileReported=true;g.replyIdle=0;g.replyLevel=0;}if(g.fileDamaged&&g.mismatchSeen)return 'ファイルの不備で止めている状況、承知しました。正しいデータの再取得を進めてください。';return g.approved.has('SALES_IMPORT')?'検証と再実行承認まで完了、承知しました。実行後の結果を報告してください。':g.facts.checked&&g.facts.history?'ファイル検証と未処理確認、承知しました。承認後に再実行し、結果を報告してください。':'当日ファイル到着、承知しました。検証と再実行を進めてください。';
+  if(['initial','progress-report','file-report'].includes(id)){
+   // A delivered status update is a reply, even when the incident is unchanged.
+   // Technical inactivity is tracked separately and is never reset here.
+   g.reported=true;g.replyIdle=0;g.replyLevel=0;
+   if(id==='progress-report')g.correctionNeeded=false;
+   return customerReply(g);
   }
   if(id==='complete'){
-   if(!(g.recovered&&(!g.setbacks||g.lockReleased)&&g.facts.summary&&g.facts.count&&!g.secondary)){g.trust=Math.max(0,g.trust-12);event(g,'検証がそろう前に復旧報告');return '復旧確認がそろっていません。後続の正常終了、処理件数、他系統の障害を確認してから報告してください。';}
+   if(!(g.recovered&&(!g.setbacks||g.lockReleased)&&g.facts.summary&&g.facts.count&&!g.secondary)){g.trust=Math.max(0,g.trust-12);event(g,'検証がそろう前に復旧報告');return 'まだ復旧完了として受け取れません。'+objectiveText(g);}
    g.replyIdle=0;finish(g,g.hadSecondary?'二次障害からの生還':g.mistakes||g.procedure<100||g.trust<85?'復旧したが要反省':'模範復旧');return '正常終了と件数一致を確認しました。対応ありがとうございました。操作経緯は報告書に残してください。';
   }
   return 'その報告だけでは状況を判断できません。初版では定型文で現状・次の対応を報告してください。';
@@ -121,7 +121,7 @@ export function answerCall(g,choice){
  push(g,'customer','あなた',text);
  if(choice==='ignore'){g.trust=Math.max(0,g.trust-5);push(g,'customer','高橋｜顧客','電話に出られないなら、メールで状況を報告してください。');}
  else if(choice==='promise'){g.correctionNeeded=true;g.trust=Math.max(0,g.trust-15);push(g,'customer','高橋｜顧客','5分で復旧する根拠は何ですか。原因と手順は確認済みですか。');}
- else{if(!g.callAnswered){g.callAnswered=true;g.replyIdle=0;g.replyLevel=0;}push(g,'customer','高橋｜顧客','現在の確認状況、承知しました。残っている作業の結果が分かったら報告してください。');}
+ else{g.callAnswered=true;g.replyIdle=0;g.replyLevel=0;push(g,'customer','高橋｜顧客','現在の確認状況、承知しました。残っている作業の結果が分かったら報告してください。');}
  push(g,'internal','鬼塚｜リーダー',choice==='ignore'?'電話を取らないなら、メールを先に出せ。無応答のまま放置して信用を落とすな。':choice==='promise'?'おい、5分で復旧って誰が判断した？ 根拠もない約束を顧客にするな。自分で訂正してこい。':'現状は伝わったな。電話が終わったら、残っている作業を進めろ。');
  event(g,'顧客の電話に対応');
 }
@@ -187,6 +187,7 @@ export function progressText(g){
  if(g.lockEncountered&&!g.lockReleased)return 'ファイル不備は解消しましたが、再実行がDBロックで停止しました。更新0件・ロールバック済みで、保持元の確認と解除を進めています。';
  if(g.fileDamaged)return g.mismatchSeen?'受信ファイルに1件欠損とチェックサム不一致があり、投入を止めています。完全なファイルの再送が必要です。':'連携元の二次連絡先につながりファイルを受信しました。まだ内容は未検証です。';
  if(g.fileRequested&&!g.file)return '連携元の一次連絡先が応答せず、ファイルは未着です。別の連絡経路で確認を進めます。';
+ if(g.lockReleased&&!g.recovered)return g.approved.has('SALES_IMPORT')?'DB担当によるロック解除を確認し、再実行の再承認を得ました。再実行はこれからです。':'DB担当によるロック解除を確認しました。再実行はまだ行っておらず、再承認を取ります。';
  if(g.file){if(g.approved.has('SALES_IMPORT'))return '当日ファイルの検証と未処理確認が完了し、再実行の承認を得ました。これから実行します。';if(g.facts.checked&&g.facts.history)return '当日ファイルの検証と未処理確認が完了しました。再実行の承認を取ります。';return '連携元の転送遅延で当日ファイルが未着でした。現在は到着し、内容と処理履歴を確認しています。';}
  if(g.facts.log&&g.facts.files)return '当日ファイルが未着です。連携元に転送状況を確認する段階で、復旧見込みはまだ未定です。';
  return '売上取込が異常終了し、後続集計は待機中です。原因と朝の業務への影響を調査しています。';
@@ -210,3 +211,32 @@ function criticComment(g,choice){
 }
 
 export function messageSurface(message){return message.channel==='customer'?'customer':'teams';}
+
+export function objectiveText(g){
+ if(g.secondary)return 'ACCOUNT_SYNCの再開と正常稼働の確認が残っています。';
+ if(g.recovered){
+  if(!g.facts.summary)return '売上取込は正常終了。後続の売上集計の確認が残っています。';
+  if(!g.facts.count)return '売上取込・後続とも正常終了。SQLで処理件数の確認が残っています。';
+  return '復旧確認は完了。顧客へ「正常終了と件数一致」を報告して対応を終了します。';
+ }
+ if(g.lockEncountered&&!g.lockReleased)return g.lockInspected?'ロック保持元は特定済み。DB担当への解除依頼が残っています。':'再実行はDBロックで失敗。SQLでロック保持元を調べる段階です。';
+ if(g.lockReleased)return g.approved.has('SALES_IMPORT')?'ロック解除・再承認は完了。SALES_IMPORTの再実行が残っています。':'ロック解除は完了。再実行には改めてリーダー確認が必要です。';
+ if(g.mismatchSeen)return '受信データが1件欠損。完全なファイルの再送が必要です。';
+ if(g.fileRequested&&!g.file)return '一次連絡先は応答なし。手順書の二次連絡先に確認できる状態です。';
+ if(!g.facts.log)return '異常終了したジョブのログを確認します。';
+ if(!g.facts.files)return '受信ファイルの一覧を確認します。';
+ if(!g.file)return '当日ファイルが未着。連携元への確認が必要です。';
+ if(!g.facts.checked)return '受信したファイルの内容検証が残っています。';
+ if(!g.facts.history)return 'ファイル検証は完了。SQLで当日の処理履歴を確認します。';
+ return g.approved.has('SALES_IMPORT')?'検証・承認は完了。SALES_IMPORTの再実行が残っています。':'検証は完了。再実行する対象と根拠をリーダーに確認します。';
+}
+function customerReply(g){
+ if(g.recovered)return '正常終了の報告、承知しました。'+objectiveText(g);
+ if(g.secondary)return '追加障害について承知しました。口座同期も含めた復旧状況を報告してください。';
+ if(g.lockEncountered&&!g.lockReleased)return '再実行がDBロックで停止した状況、承知しました。まだ復旧していないものとして扱います。';
+ if(g.lockReleased)return g.approved.has('SALES_IMPORT')?'ロック解除と再実行承認まで完了、承知しました。実行後の結果を報告してください。':'ロック解除、承知しました。再実行はまだ行っていないという理解です。';
+ if(g.fileDamaged)return g.mismatchSeen?'ファイル欠損で投入を止めている状況、承知しました。':'受信済み・内容未検証、承知しました。';
+ if(g.approved.has('SALES_IMPORT'))return '検証と再実行承認まで完了、承知しました。実行後の結果を報告してください。';
+ if(g.file)return 'ファイル到着、承知しました。復旧作業の結果を報告してください。';
+ return '現在の確認状況、承知しました。状況が変わり次第、続報をお願いします。';
+}
