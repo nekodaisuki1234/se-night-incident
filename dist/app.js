@@ -9,9 +9,9 @@ function enableAudio(){if(!sound)return;try{if(!audio)audio=new (window.AudioCon
 document.addEventListener('pointerdown',enableAudio,{passive:true});
 const labels={internal:'社内',customer:'顧客メール',operations:'操作報告'};
 function scrollLatest(){window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'});$('new-messages').hidden=true;}
-function renderClock(){$('time').textContent=time(g)+':'+String(Math.floor(g.incidentSeconds||0)).padStart(2,'0');$('deadline').textContent=deadlineText(g);}
+function renderClock(){$('time').textContent=time(g);$('deadline').textContent=deadlineText(g);}
 function render(){
- const joined=!!g.managerEnding&&visible>g.endingStart;const members=['あなた','鬼塚','田山','森',...(g.infraDeadline?['佐伯（インフラ）']:[]),...(joined?['マネージャー']:[])];$('member-count').textContent=members.length+'人';$('member-list').textContent=members.join('\n');
+ const joined=!!g.managerEnding&&visible>g.endingStart;const members=['あなた','鬼塚','田山','森',...(g.infraDeadline?['佐伯（インフラ）']:[]),...(joined?['一条（PM）']:[])];$('member-count').textContent=members.length+'人';$('member-list').textContent=members.join('\n');
  $('manager-blackout').hidden=!(g.managerEnding?.phase==='blackout'&&visible===g.timeline.length&&!resultRequested);$('manager-result').disabled=busy;
  renderClock();$('trust').value=g.trust;$('trust-num').textContent=g.trust;$('mental').value=g.mental;$('mental-num').textContent=g.mental;
  $('state').textContent=g.dispatch?(g.dispatch.phase==='travelling'?'操作停止 · 鬼塚がタクシーで移動中':'GAME OVER · 鬼塚が現場に到着'):g.secondary?'追加障害：ACCOUNT_SYNC 停止':g.recovered?'SALES_IMPORT · 正常終了':g.lockEncountered&&!g.lockReleased?'再実行失敗 · DBロック':g.fileDamaged&&g.mismatchSeen?'受信ファイル · 件数不一致':'SALES_IMPORT · 異常終了';
@@ -43,14 +43,14 @@ new ResizeObserver(resizeComposer).observe(document.querySelector('.composer'));
 for(const id of ['intro','call','result','paused','meeting'])$(id).addEventListener('cancel',e=>e.preventDefault());
 document.addEventListener('visibilitychange',()=>{saveProgress();last=Date.now();});
 window.addEventListener('pagehide',saveProgress);
-setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!$('intro').open){advanceIncidentTime(g,seconds);renderClock();saveProgress();}if(!document.hidden&&!paused&&!busy&&!meetingActive(g)&&!pressedChoice&&!$('call').open&&!$('intro').open&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
+setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!$('intro').open){renderClock();}if(!document.hidden&&!paused&&!busy&&!meetingActive(g)&&!pressedChoice&&!$('call').open&&!$('intro').open&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function playReplies(showCustomerReply=false){
  if(busy)return;busy=true;renderChoices();
  try{while(rendered<g.timeline.length){
   while(paused||document.hidden)await delay(200);
   const message=g.timeline[rendered];
-  if(message.presentation?.startsWith('manager-')){if(message.presentation!=='manager-blackout')$('typing').hidden=true;else{$('typing').hidden=false;$('typing-name').textContent='マネージャーが入力中…';}await delay(message.presentation==='manager-blackout'?2500:2400);while(paused||document.hidden)await delay(200);if(message.presentation==='manager-blackout')g.managerEnding.phase='blackout';}
+  if(message.presentation?.startsWith('manager-')){if(message.presentation!=='manager-blackout')$('typing').hidden=true;else{$('typing').hidden=false;$('typing-name').textContent='一条（PM）が入力中…';}await delay(message.presentation==='manager-blackout'?2500:2400);while(paused||document.hidden)await delay(200);if(message.presentation==='manager-blackout')g.managerEnding.phase='blackout';}
   else if(message.presentation==='meeting'){ $('typing').hidden=true;renderMeeting();$('meeting-speaking').textContent=message.sender==='システム'?'':message.sender.split('｜')[0]+'が発言中';await delay(Math.max(message.pauseBefore||0,1200+Math.min(2200,message.text.length*22)));while(paused||document.hidden)await delay(200);}
   else if(message.presentation==='onsite'){$('typing').hidden=true;await delay(message.text==='〜完〜'?3500:Math.max(2500,message.pauseBefore||0));while(document.hidden)await delay(200);}
   else if(!g.callReason&&message.sender!=='あなた'&&messageSurface(message)==='teams'){
@@ -59,7 +59,7 @@ async function playReplies(showCustomerReply=false){
    while(paused||document.hidden)await delay(200);
   }
   if(!['onsite','meeting','manager-typing','manager-blackout'].includes(message.presentation)&&!g.callReason&&message.channel==='internal'&&message.sender!=='あなた')chatSound();
-  $('typing').hidden=message.presentation!=='manager-typing';if(message.presentation==='manager-typing')$('typing-name').textContent='マネージャーが入力中…';visible=rendered+1;render();requestAnimationFrame(scrollLatest);
+  $('typing').hidden=message.presentation!=='manager-typing';if(message.presentation==='manager-typing')$('typing-name').textContent='一条（PM）が入力中…';visible=rendered+1;render();requestAnimationFrame(scrollLatest);
   if(message.presentation?.startsWith('manager-')){g.endingVisible=visible;saveProgress();}
   if(message.presentation==='onsite'){g.endingVisible=visible;saveProgress();if(message.text==='〜完〜')await delay(1200);}
  }}finally{busy=false;last=Date.now();$('typing').hidden=true;if(showCustomerReply&&!meetingActive(g)&&!g.ended&&!g.callReason&&!g.dispatch)openCustomerMail();render();resizeComposer();}

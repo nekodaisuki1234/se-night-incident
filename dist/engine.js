@@ -193,8 +193,8 @@ export function tick(g,seconds){return withDialogue(g,{kind:'tick',seconds},()=>
 function tickCore(g,seconds){
  if(!g.started||g.ended)return;g.clock+=seconds;g.techIdle+=seconds;g.replyIdle+=seconds;
  const t=Math.min(3,Math.floor(g.techIdle/90)),r=Math.min(3,Math.floor(g.replyIdle/75));
- if(t>g.techLevel){if(t<3)requestInternalStatus(g,'timer');g.techLevel=t;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'internal','鬼塚｜リーダー',['','状況の共有を頼む。確認できたことと、まだ分からないことは分けてくれ。','進展がないまま時間が過ぎている。次の対応はどうすんだ？ こっちも説明しないといけないんだよ。','このまま任せ続ける判断はできない。担当を交代する。これ以上の操作は止めてくれ。'][t]);if(t===3)finish(g,'対応交代');}
- if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);g.minutes+=2;push(g,'customer','高橋｜顧客',['','作業を進めていただいているとは思いますが、こちらから確認する前に、一度ご連絡いただけるものと思っておりました。現状を共有いただけますか。','その後のご連絡がないため、お電話しました。作業と並行で大変かとは思いますが、ご連絡まで含めて対応いただけると助かります。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','「こちらから確認する前にご連絡いただけるものと思っていた」とのことです。','作業と並行して、連絡まで含めて対応してほしいとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
+ if(t>g.techLevel){if(t<3)requestInternalStatus(g,'timer');g.techLevel=t;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);push(g,'internal','鬼塚｜リーダー',['','状況の共有を頼む。確認できたことと、まだ分からないことは分けてくれ。','進展がないまま時間が過ぎている。次の対応はどうすんだ？ こっちも説明しないといけないんだよ。','このまま任せ続ける判断はできない。担当を交代する。これ以上の操作は止めてくれ。'][t]);if(t===3)finish(g,'対応交代');}
+ if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);g.trust=Math.max(0,g.trust-8);push(g,'customer','高橋｜顧客',['','作業を進めていただいているとは思いますが、こちらから確認する前に、一度ご連絡いただけるものと思っておりました。現状を共有いただけますか。','その後のご連絡がないため、お電話しました。作業と並行で大変かとは思いますが、ご連絡まで含めて対応いただけると助かります。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','「こちらから確認する前にご連絡いただけるものと思っていた」とのことです。','作業と並行して、連絡まで含めて対応してほしいとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
  if(g.clock>=25&&!g.callSeen){g.callSeen=true;g.call=true;}
 }
 export function answerCall(g,choice){return withDialogue(g,{kind:'call',choice,urgent:g.callReason},()=>answerCallCore(g,choice));}
@@ -602,10 +602,10 @@ function beginManagerEnding(g,operation,impact){
  finish(g,'二次障害');event(g,'二次障害による終了：'+operation+'／'+impact);
  g.endingStart=g.timeline.length;g.endingVisible=g.endingStart;
  for(const [sender,text,presentation] of [
-  ['システム','鬼塚がマネージャーをチャットに追加しました','manager-step'],
-  ['システム','これまでのチャット履歴が共有されました','manager-step'],
-  ['鬼塚｜リーダー','二次障害の経緯はこちらです','manager-step'],
-  ['システム','マネージャーが入力中…','manager-typing'],
+  ['システム','鬼塚が一条（PM）を追加しました','manager-step'],
+  ['システム','過去の履歴を全て共有しました','manager-step'],
+  ['鬼塚｜リーダー','@一条（PM） こちらです','manager-step'],
+  ['システム','一条（PM）が入力中…','manager-typing'],
   ['システム','GAME OVER','manager-blackout']
  ]){push(g,'internal',sender,text);Object.assign(g.timeline.at(-1),{presentation});}
 }
@@ -619,14 +619,10 @@ function delegateFirstReport(g,before){
  event(g,'一次報を優先する指示より先にログを確認したため、鬼塚が顧客へ一次報を代送（ログ調査は正常実施）');
 }
 
-// Deadline clock is separate from response-idle timers: dialogue consumes time without idle penalties.
-export function advanceIncidentTime(g,seconds){
- if(!g.started||g.ended||g.dispatch||!Number.isFinite(seconds)||seconds<=0)return;
- const total=(g.incidentSeconds||0)+seconds*10;
- g.minutes+=Math.floor(total/60);g.incidentSeconds=total%60;
-}
+// Kept as a compatibility export: wall time no longer advances the incident clock.
+export function advanceIncidentTime(g,seconds){}
 export function deadlineText(g){
- const remaining=180*60-(g.minutes*60+(g.incidentSeconds||0));
+ const remaining=180*60-g.minutes*60;
  const minutes=Math.ceil(Math.abs(remaining)/60);
  return remaining>0?'03:00まで あと'+Math.floor(minutes/60)+'時間'+String(minutes%60).padStart(2,'0')+'分':remaining===0?'03:00 · 復旧期限です':'03:00から '+Math.floor(minutes/60)+'時間'+String(minutes%60).padStart(2,'0')+'分超過';
 }
