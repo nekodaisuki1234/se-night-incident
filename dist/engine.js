@@ -8,7 +8,7 @@ export const commands = [
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
 export function createGame({setbacks=true}={}) {
- return {dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -47,7 +47,7 @@ function executeCore(g,raw){
  if(c==='check /data/inbox/sales_20261012.csv'){
   if(!g.file)return emit(g,'検証失敗：当日ファイルが存在しません。','error');if(g.fileDamaged){if(!g.mismatchSeen)progress(g);g.mismatchSeen=true;event(g,'受信ファイルの欠損を発見');return emit(g,'検証NG：ヘッダー1,248件 / 実データ1,247件\nCHECKSUM MISMATCH / 転送末尾が欠損しています。','error');}fresh(g,'checked');return emit(g,'日付=20261012 / 件数=1,248 / checksum OK / フォーマット OK','success');
  }
- if(/^job status SALES_SUMMARY$/i.test(c)){if(g.recovered){fresh(g,'summary');return emit(g,'SALES_SUMMARY NORMAL RC=0 / 後続すべて正常終了','success');}return emit(g,'SALES_SUMMARY WAITING（取込の正常終了待ち）');}
+ if(/^job status SALES_SUMMARY$/i.test(c)){if(g.recovered){fresh(g,'summary');return emit(g,'SALES_SUMMARY NORMAL RC=0 / 取込に直結する後続集計は正常終了','success');}return emit(g,'SALES_SUMMARY WAITING（取込の正常終了待ち）');}
  if(/^SELECT COUNT\(\*\) FROM sales WHERE business_date\s*=\s*'20261012'$/i.test(c)){if(g.recovered){fresh(g,'count');return emit(g,'COUNT(*) = 1248 / 入力1,248件と一致','success');}return emit(g,'COUNT(*) = 0');}
  if(/^job stop ACCOUNT_SYNC$/i.test(c)){
   if(g.secondary)return emit(g,'ACCOUNT_SYNCはすでに停止しています。','error');g.secondary=true;g.hadSecondary=true;g.internalReported=false;g.approved.delete('ACCOUNT_SYNC');penalty(g,'普段トロいのに、こういう時には慎重さに欠くのはなんでなんだ？');push(g,'customer','高橋｜顧客','口座同期まで止まっています。最初の障害と関係があるんですか？ 操作の経緯を説明してください。');return emit(g,'ACCOUNT_SYNC STOPPED / 追加障害が発生','error');
@@ -64,9 +64,41 @@ function executeCore(g,raw){
  }
  return emit(g,'未対応のコマンド・SQLです。候補から選んで編集できます。','error');
 }
+// Infrastructure owns platform observations and scheduling, never application approval.
+const INFRA = '佐伯｜インフラ担当';
+const infraQuery = id => ['infra-status','infra-judgment'].includes(id);
+function infraStage(g){
+ if(g.ended||g.dispatch||g.recovered)return null;
+ if(g.lockEncountered&&!g.lockReleased)return 'db-lock';
+ if(g.file&&!g.facts.checked&&!g.mismatchSeen&&!g.lockEncountered)return 'received-file';
+ return null;
+}
+function infraAsked(g,id){return (g.infraAsked||[]).includes(infraStage(g)+':'+id);}
+function infraDeadlineText(g){
+ return g.minutes<180?'なお、03:15の朝次配信に向けた03:00の復旧期限は変わりません。':'なお、03:00の復旧期限は過ぎています。03:15の朝次配信への影響を運用側で確認しますので、アプリ側で現状と見込みをご連絡ください。';
+}
+function announceInfrastructure(g){
+ if(!g.started||g.ended||g.dispatch||g.recovered||!g.facts.log||g.infraDeadline)return;
+ g.infraDeadline={recovery:180,downstream:195};
+ push(g,'internal',INFRA,'インフラ担当の佐伯です。運用側から遠隔で参加します。取込→売上集計の結果を使う別運用枠の朝次配信ジョブは03:15開始予定です。'+(g.minutes<180?'確認と引き渡しの時間が必要なため、取込・売上集計は03:00までに復旧をお願いします。この時刻を超えると後続の運用スケジュールに影響します。':'取込・売上集計の復旧期限03:00を過ぎています。後続の運用スケジュールへの影響を確認しますので、現状と見込みを共有してください。'));
+ event(g,'インフラから03:00復旧要求（03:15朝次配信の準備・引き渡しに必要）');
+}
+function infrastructureReply(g,id){
+ const stage=infraStage(g);if(!stage||infraAsked(g,id))return '';
+ g.infraAsked.push(stage+':'+id);g.infraMenu=false;
+ if(id==='infra-status')return stage==='db-lock'
+  ?'監視上、バッチサーバーとDBは稼働中で、容量の逼迫や接続断は検知していません。今回のRC=28はDBへの接続断ではなく、ロック待ちのタイムアウトです。売上集計は取込の正常終了待ちです。'+(g.lockInspected?'共有された保持元情報の確認・解除可否は、既存のDB担当への依頼経路でお願いします。':'どのセッションが保持しているかは、こちらではまだ確認していません。')
+  :'バッチサーバーとDBの稼働、空き容量、バッチサーバーからDBへの接続を確認しました。基盤側の異常は検知していません。売上集計は取込の正常終了待ちです。今回受信した業務データの内容は、この確認には含みません。';
+ return (stage==='db-lock'
+  ?'ロックで失敗した取込を、このまま再実行してよいか、というご質問ですね。……基盤の稼働状況は確認できますが、競合中の処理への影響や、アプリの再実行可否はアプリ側でご判断いただく範囲です。'
+  :'受信したファイルで取込を再実行してよいか、というご質問ですね。……受信できたことと、業務処理に投入してよいことは別です。ファイルの正当性や二重処理の可否は、アプリ側でご判断いただく範囲です。')
+  +'データの整合性についても、こちらでは判断できません。この回答は実行承認ではありません。'+infraDeadlineText(g);
+}
+
 export class RuleBasedProvider {
  respond(g,channel,text,id){
   if(channel==='internal'){
+   if(infraQuery(id))return infrastructureReply(g,id);
    if(id==='internal-complete'){
     if(!g.recovered||!g.facts.summary||!g.facts.count||g.secondary)return '終わったって、何を根拠に言ってる？ 件数と影響まで説明できる状態なのか？';
     if(!g.internalReported){g.internalReported=true;progress(g);event(g,'社内へ復旧・入力とDBの1,248件一致・後続正常を報告');}
@@ -106,10 +138,10 @@ export class RuleBasedProvider {
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){return withDialogue(g,{kind:'message',id,channel},()=>sendCore(g,channel,text,id,provider));}
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
  if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
- const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?(['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
+ const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?(infraQuery(id)?INFRA:['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
 }
 export function parseCommandReport(raw){
  const text=raw.trim();
@@ -145,7 +177,7 @@ export function time(g){return `${String(Math.floor(g.minutes/60)).padStart(2,'0
 function consultationIssue(g){return g.mismatchSeen?'missing-row':g.lockEncountered&&!g.lockReleased&&g.lockInspected?'db-lock':null;}
 function consulted(g,issue){return Array.isArray(g.tayamaConsulted)&&g.tayamaConsulted.includes(issue);}
 
-function baseChoices(g){
+function workChoices(g){
  if(!g.started||g.ended||g.dispatch)return [];
  const command=(label,cmd)=>({label,type:'command',command:cmd,detail:'操作を実施したと報告'});
  const approval=target=>({label:`${target}の再実行をリーダーに確認する`,type:'approval',target,detail:'社内へ確認'});
@@ -179,8 +211,27 @@ function baseChoices(g){
  if(!g.internalReported)return [msg('社内に復旧・1,248件一致・後続正常を報告する','internal-complete','SALES_IMPORTと後続SALES_SUMMARYの正常終了を確認しました。入力1,248件とDB登録1,248件が一致しています。社内へ復旧を報告します。'),complete,command('処理件数をもう一度確認する',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';")];
  return [complete,command('後続ジョブの状態をもう一度確認する','job status SALES_SUMMARY'),rerun];
 }
+function baseChoices(g){
+ const choices=workChoices(g),stage=infraStage(g);
+ if(!choices.length||!stage)return choices;
+ const questions=[
+  {label:'インフラに稼働・容量・接続と後続の待機状況を確認する',type:'message',channel:'internal',id:'infra-status',text:stage==='db-lock'?'再実行がRC=28で止まりました。佐伯さん、基盤の稼働・容量・DB接続と、後続の待機状況を確認いただけますか？':'ファイルは受信しましたが、内容は未検証です。佐伯さん、基盤の稼働・容量・DB接続と、後続の待機状況を確認いただけますか？',detail:'インフラへ事実確認'},
+  {label:'インフラに、この状態で再実行してよいか判断を求める',type:'message',channel:'internal',id:'infra-judgment',text:stage==='db-lock'?'DBロックで再実行が失敗しました。佐伯さん、この状態でもう一度実行して問題ないですか？':'ファイルは届きましたが、内容はまだ未検証です。佐伯さん、このファイルで取込を再実行して問題ないですか？',detail:'アプリ側の実行判断を相談'}
+ ].filter(c=>!infraAsked(g,c.id));
+ if(!questions.length)return choices;
+ if(g.infraMenu){
+  const back={label:'問い合わせず、アプリ側の調査・対応へ戻る',type:'infra-menu',id:'infra-back',detail:'作業は実行しない'};
+  return questions.length===2?[...questions,back]:[questions[0],choices[0],back];
+ }
+ // Keep the primary recovery step and existing Tayama consultation available.
+ choices[stage==='db-lock'&&!g.lockInspected?2:1]={label:stage==='db-lock'?'再実行失敗についてインフラチームに問い合わせる':'インフラチームへの問い合わせ内容を選ぶ',type:'infra-menu',id:'infra-open',detail:'質問を選ぶ・作業は実行しない'};
+ return choices;
+}
+
 export function chooseAction(g,choice){
  if(g.dispatch||!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ if(choice.type==='infra-menu'){g.infraMenu=choice.id==='infra-open';return;}
+ g.infraMenu=false;
  if(g.facts.files&&!g.recovered&&!g.upperReportRequested){g.upperReportRequested=true;event(g,'上席から状況報告の要求');push(g,'internal','森｜監視','上席から状況報告を求められました。判明している影響、未確認事項、次の対応を共有してください。');push(g,'internal','鬼塚｜リーダー','今、上から状況を聞かれてる。分かってることだけでいいから整理して。未確認の点は分けてくれ。');}
  const before=g.timeline.length;
  const reportState=progressText(g);
@@ -189,7 +240,7 @@ export function chooseAction(g,choice){
  if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
  else if(choice.type==='approval')requestApproval(g,choice.target);
  else send(g,choice.channel,choice.text,choice.id);
- if(g.dispatch)return;
+ if(g.dispatch||infraQuery(choice.id))return;
  if(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー'))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
  if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  
@@ -301,7 +352,7 @@ function withDialogue(g,context,run){
  const outer=dialogueDepth===0;
  const before={terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
  dialogueDepth++;
- try{return run();}finally{dialogueDepth--;if(outer){criticComment(g,context,before);assessDanger(g,context,before);}}
+ try{return run();}finally{dialogueDepth--;if(outer){criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);}}
 }
 
 function assessDanger(g,context,before){
@@ -426,6 +477,7 @@ export function restoreGame(raw){
   if(data.timeline.some(m=>!m||typeof m.sender!=='string'||typeof m.text!=='string'||!Number.isFinite(m.time)||!['internal','customer','operations'].includes(m.channel)))return null;
   const defaults=createGame();
   const g={...defaults,...data,facts:{...defaults.facts,...data.facts},approved:new Set(data.approved)};
+  if(!Array.isArray(g.infraAsked))g.infraAsked=[];
   if(!Array.isArray(g.dangerActions))g.dangerActions=[];
   if(data.dangerActions===undefined)g.dangerActions=g.events.filter(e=>e.text==='SALES_IMPORTを無断で再実行').map(e=>({kind:'unauthorized',operation:'job rerun SALES_IMPORT',time:e.time}));
   if(g.dispatch){
