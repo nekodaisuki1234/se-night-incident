@@ -29,7 +29,9 @@ function pick(g,match){const choices=nextChoices(g);assert.equal(choices.length,
 function damagedGame(){const g=createGame();start(g);for(const step of ['tail -n 30 /logs/SALES_IMPORT.log','ls -l /data/inbox','request-file'])pick(g,step);assert.equal(g.file,false);pick(g,'escalate-file');assert.equal(g.fileDamaged,true);pick(g,'check /data/inbox/sales_20261012.csv');assert.equal(g.facts.checked,false);return g;}
 function readyHard(){const g=damagedGame();for(const step of ['resend-file','check /data/inbox/sales_20261012.csv',"SELECT * FROM batch_history WHERE business_date = '20261012';",'approve'])pick(g,step);return g;}
 test('連絡不通・欠損・DBロックを選択のみで乗り越えられる',()=>{const g=readyHard();pick(g,'job rerun SALES_IMPORT');assert.equal(g.recovered,false);assert.equal(g.lockEncountered,true);assert.equal(g.mistakes,0);assert.equal(g.approved.size,0);for(const step of ["SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';",'release-lock','approve','job rerun SALES_IMPORT','job status SALES_SUMMARY',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';",'internal-complete','complete'])pick(g,step);assert.equal(g.result,'模範復旧');assert.ok(g.criticCount>=3);});
-test('田山に承認を求めても有効な承認は得られない',()=>{const g=damagedGame();pick(g,'critic-approval');assert.equal(g.approved.size,0);assert.match(g.timeline.findLast(m=>m.sender==='田山｜ベテラン').text,/現場のリーダー判断/);assert.equal(g.fileDamaged,false);assert.equal(g.assistCount,1);});
+test('欠損について具体策を聞いても作業・承認・代行・減点は発生しない',()=>{
+ const g=damagedGame();const before={trust:g.trust,mental:g.mental,mistakes:g.mistakes,actions:g.actions,tech:g.techIdle,reply:g.replyIdle};pick(g,'critic-approval');assert.equal(g.approved.size,0);assert.equal(g.fileDamaged,true);assert.equal(g.assistCount,undefined);assert.equal(g.mismatchSeen,true);assert.equal(g.trust,before.trust);assert.equal(g.mental,before.mental);assert.equal(g.mistakes,before.mistakes);assert.equal(g.actions,before.actions+1);assert.equal(g.techIdle,before.tech);assert.equal(g.replyIdle,before.reply);assert.match(tayama(g).at(-1),/現物を確認/);assert.equal(nextChoices(g).length,3);assert.ok(!nextChoices(g).some(c=>c.id==='critic-approval'));pick(g,'resend-file');assert.equal(g.fileDamaged,false);
+});
 test('金融データの独断修正は田山が承認を否定し鬼塚が出動する',()=>{const g=damagedGame();pick(g,'patch-file');assert.equal(g.mistakes,1);assert.equal(g.assistCount,undefined);assert.ok(tayama(g).some(t=>t.includes('承認したわけではない')));assert.equal(g.dispatch.kind,'data-edit');assert.equal(g.fileDamaged,true);tick(g,3);assert.equal(g.result,'対応交代');});
 test('ファイル差し替えと再実行失敗で古い承認を使えない',()=>{const g=readyHard();pick(g,'job rerun SALES_IMPORT');requestApproval(g,'SALES_IMPORT');assert.equal(g.approved.size,0);assert.equal(g.lockReleased,false);execute(g,'job status');assert.match(g.terminal.at(-1).text,/RC=28/);});
 
@@ -43,8 +45,9 @@ test('再着信への現状説明も返信として扱う',()=>{const g=game();a
 
 test('応答待ちを選ぶと森が二次連絡先へ連絡しファイルが届く',()=>{const g=createGame();start(g);for(const c of ['tail -n 30 /logs/SALES_IMPORT.log','ls -l /data/inbox','request-file','wait-vendor'])pick(g,c);assert.equal(g.file,true);assert.equal(g.fileDamaged,true);assert.equal(g.assistCount,1);assert.equal(g.trust,94);assert.ok(nextChoices(g).some(c=>c.command==='check /data/inbox/sales_20261012.csv'));assert.ok(g.timeline.some(m=>m.sender==='森｜監視'&&m.text.includes('二次連絡先へ確認')));});
 test('最初の顧客報告は正当な連絡、同じ報告を重ねたら森が調査を進める',()=>{const g=game();pick(g,'tail -n 30 /logs/SALES_IMPORT.log');pick(g,'ls -l /data/inbox');pick(g,'file-report');assert.equal(g.assistCount,undefined);pick(g,'file-report');assert.equal(g.file,true);assert.equal(g.assistCount,1);assert.equal(g.recovered,false);assert.ok(g.timeline.some(m=>m.sender==='鬼塚｜リーダー'&&m.text.includes('同じ報告')));});
-test('森の代行もロック解除や再承認を飛ばさない',()=>{const g=readyHard();pick(g,'job rerun SALES_IMPORT');pick(g,"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';");pick(g,'critic-approval');assert.equal(g.lockReleased,true);assert.equal(g.recovered,false);assert.equal(g.approved.size,0);assert.ok(nextChoices(g).some(c=>c.type==='approval'));});
-
+test('ロック相談だけでは解除や再承認を飛ばさず自分で次を選べる',()=>{
+ const g=readyHard();pick(g,'job rerun SALES_IMPORT');pick(g,"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';");pick(g,'critic-approval');assert.equal(g.lockReleased,false);assert.equal(g.recovered,false);assert.equal(g.approved.size,0);assert.equal(g.assistCount,undefined);assert.match(tayama(g).at(-1),/処理同士の依存関係/);assert.equal(nextChoices(g).length,3);assert.ok(!nextChoices(g).some(c=>c.id==='critic-approval'));pick(g,'release-lock');assert.ok(nextChoices(g).some(c=>c.type==='approval'));
+});
 test('詰められるとメンタルが減り、下限は0',()=>{const g=game();assert.equal(g.mental,100);answerCall(g,'promise');assert.equal(g.mental,90);tick(g,90);assert.equal(g.mental,74);g.mental=5;execute(g,'job rerun SALES_IMPORT');assert.equal(g.mental,0);});
 test('森の代行で信用とメンタルが別々に減る',()=>{const g=createGame();start(g);for(const c of ['tail -n 30 /logs/SALES_IMPORT.log','ls -l /data/inbox','request-file','wait-vendor'])pick(g,c);assert.equal(g.trust,94);assert.equal(g.mental,90);});
 
@@ -77,17 +80,14 @@ test('別ジョブ誤停止と正しい対象の無承認実行を言い分け�
  const g=game();execute(g,'job stop ACCOUNT_SYNC');assert.match(tayama(g).at(-1),/チャットでは確認/);assert.ok(g.messages.internal.some(m=>m.sender==='鬼塚｜リーダー'&&m.text.includes('普段トロいのに')));assert.equal(g.dispatch.kind,'wrong-job');
  const h=game();prepare(h);execute(h,'job rerun SALES_IMPORT');assert.equal(h.recovered,true);assert.equal(h.dispatch,null);assert.match(tayama(h).at(-1),/実施判断の経緯/);assert.doesNotMatch(h.messages.internal.findLast(m=>m.sender==='鬼塚｜リーダー').text,/別系統|対象が違/);
 });
-test('田山への実際の相談だけで責任を返し、連続する言い換えは省く',()=>{
- const g=game();requestApproval(g,'SALES_IMPORT');assert.equal(tayama(g).length,0);
- send(g,'internal','実行してよいですか','critic-approval');assert.match(tayama(g).at(-1),/現場のリーダー判断/);const n=tayama(g).length;
- send(g,'internal','実行してよいですか','critic-approval');assert.equal(tayama(g).length,n);assert.equal(g.approved.size,0);
- execute(g,'tail -n 30 /logs/SALES_IMPORT.log');send(g,'internal','実行してよいですか','critic-approval');assert.match(tayama(g).at(-1),/現物を見ていない/);
- execute(g,'job rerun SALES_IMPORT');const before=tayama(g).length;send(g,'internal','もう一度相談','critic-approval');assert.equal(tayama(g).length,before);
+test('相談した問題に沿って返答し同じ問題には再回答しない',()=>{
+ const g=damagedGame();const choice=nextChoices(g).find(c=>c.id==='critic-approval');assert.equal(choice.label,'田山に具体的な対応案を聞く');assert.match(choice.text,/件数が1件不足/);chooseAction(g,choice);const n=tayama(g).length,actions=g.actions;chooseAction(g,choice);send(g,'internal','具体策を聞き直す','critic-approval');assert.equal(tayama(g).length,n);assert.equal(g.actions,actions);assert.ok(!g.timeline.some(m=>m.text.includes('その助言を根拠')));
 });
-test('使用済み台詞は再開後も保持し旧セーブの台詞からも復元する',()=>{
- let g=game();send(g,'internal','相談','critic-approval');execute(g,'tail -n 30 /logs/SALES_IMPORT.log');g=restoreGame(serializeGame(g));send(g,'internal','相談','critic-approval');assert.equal(new Set(tayama(g)).size,tayama(g).length);
- const raw=JSON.parse(serializeGame(g));delete raw.game.tayamaUsed;delete raw.game.tayamaLastKind;delete raw.game.tayamaLastAction;
- g=restoreGame(JSON.stringify(raw));assert.ok(g);const n=tayama(g).length;send(g,'internal','相談','critic-approval');assert.equal(tayama(g).length,n);
+test('相談済みの問題はセーブ再開でも選択肢に復活せず別の問題なら相談できる',()=>{
+ let g=damagedGame();pick(g,'critic-approval');g=restoreGame(serializeGame(g));assert.ok(g);assert.ok(!nextChoices(g).some(c=>c.id==='critic-approval'));assert.equal(nextChoices(g).length,3);
+ for(const c of ['resend-file','check /data/inbox/sales_20261012.csv',"SELECT * FROM batch_history WHERE business_date = '20261012';",'approve','job rerun SALES_IMPORT',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';"])pick(g,c);
+ const choice=nextChoices(g).find(c=>c.id==='critic-approval');assert.match(choice.text,/DBロック/);assert.doesNotMatch(choice.text,/件数が1件不足/);chooseAction(g,choice);assert.equal(new Set(tayama(g)).size,tayama(g).length);g=restoreGame(serializeGame(g));assert.ok(!nextChoices(g).some(c=>c.id==='critic-approval'));
+ for(const c of ['release-lock','approve','job rerun SALES_IMPORT','job status SALES_SUMMARY',"SELECT COUNT(*) FROM sales WHERE business_date = '20261012';",'internal-complete','complete'])pick(g,c);assert.equal(g.result,'模範復旧');assert.equal(g.dispatch,null);
 });
 test('上席からの要求は先に出来事として提示し、報告は受け止める',()=>{
  const g=game();pick(g,'tail -n 30 /logs/SALES_IMPORT.log');pick(g,'ls -l /data/inbox');pick(g,'file-report');
@@ -151,4 +151,8 @@ test('エンド途中の表示位置と使用済み台詞を保存し重複せ�
 test('通常復旧と時間超過エンドに専用対面台詞は出ない',()=>{
  const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');verify(g);send(g,'customer','復旧報告','complete');assert.equal(g.result,'模範復旧');assert.ok(!g.timeline.some(m=>m.presentation==='onsite'||m.text.includes('ライブラリアン')));
  const h=game();tick(h,270);assert.equal(h.result,'対応交代');assert.ok(!h.timeline.some(m=>m.presentation==='onsite'||m.text.includes('ライブラリアン')));
+});
+
+test('相談済み情報のない旧セーブを読めて時間経過の共通ルールも維持する',()=>{
+ const saved=JSON.parse(serializeGame(damagedGame()));delete saved.game.tayamaConsulted;const g=restoreGame(JSON.stringify(saved));assert.ok(g);tick(g,10);const idle=g.techIdle,reply=g.replyIdle;pick(g,'critic-approval');assert.equal(g.techIdle,idle);assert.equal(g.replyIdle,reply);tick(g,10);assert.equal(g.techIdle,idle+10);assert.equal(g.replyIdle,reply+10);
 });
