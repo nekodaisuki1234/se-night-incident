@@ -198,7 +198,7 @@ test('相談の連打とセーブ再開で回答を重複せず、別の障害�
  g.setbacks=true;pick(g,'check /data/inbox/sales_20261012.csv');pick(g,"SELECT * FROM batch_history WHERE business_date = '20261012';");pick(g,'approve');pick(g,'job rerun SALES_IMPORT');pick(g,'infra-open');assert.ok(nextChoices(g).some(c=>c.id==='infra-status'));pick(g,'infra-status');assert.equal(g.infraAsked.length,3);assert.equal(new Set(infraMessages(g).map(m=>m.text)).size,infraMessages(g).length);
 });
 test('期限を過ぎても新しい減点や終了を発生させず、過去の時刻として説明する',()=>{
- const g=receivedGame();g.minutes=179;pick(g,'infra-open');pick(g,'infra-judgment');assert.equal(g.minutes,180);assert.match(infraMessages(g).at(-1).text,/期限は過ぎています/);assert.doesNotMatch(infraMessages(g).at(-1).text,/期限は変わりません/);tick(g,1);assert.equal(g.trust,100);assert.equal(g.mental,100);assert.equal(g.ended,false);assert.equal(g.dispatch,null);
+ const g=receivedGame();g.minutes=179;pick(g,'infra-open');pick(g,'infra-judgment');assert.equal(g.minutes,189);assert.match(infraMessages(g).at(-1).text,/期限は過ぎています/);assert.doesNotMatch(infraMessages(g).at(-1).text,/期限は変わりません/);tick(g,1);assert.equal(g.trust,100);assert.equal(g.mental,100);assert.equal(g.ended,false);assert.equal(g.dispatch,null);
  const old=JSON.parse(serializeGame(g));delete old.game.infraAsked;delete old.game.infraDeadline;delete old.game.infraMenu;old.game.timeline=old.game.timeline.filter(m=>!m.sender.startsWith('佐伯'));const restored=restoreGame(JSON.stringify(old));assert.ok(restored);assert.deepEqual(restored.infraAsked,[]);execute(restored,'job status');assert.match(infraMessages(restored)[0].text,/期限03:00を過ぎています/);assert.equal(restored.ended,false);
 });
 test('問い合わせメニューから戻れる・顧客報告へ切り替えても三択の作業に戻れる',()=>{
@@ -275,8 +275,8 @@ test('優先指示がない旧セーブのログ調査には代送も叱責も�
  const g=createGame({setbacks:false});start(g);const saved=JSON.parse(serializeGame(g));delete saved.game.firstReportInstruction;delete saved.game.firstReportDelegated;saved.game.timeline=saved.game.timeline.filter(m=>!m.text.startsWith('調査の前に'));const h=restoreGame(JSON.stringify(saved));execute(h,'tail -n 30 /logs/SALES_IMPORT.log');assert.equal(h.firstReportDelegated,false);assert.equal(h.reported,false);assert.equal(h.facts.log,true);
 });
 
-test('実時間では時計が進まず、会議の回答でも選択時に1分進む',async()=>{
- const {advanceIncidentTime,deadlineText}=await import('../dist/engine.js');const g=meetingGame();const before={minutes:g.minutes,clock:g.clock,tech:g.techIdle,reply:g.replyIdle,trust:g.trust};advanceIncidentTime(g,6);assert.equal(g.minutes,before.minutes);assert.equal(g.clock,before.clock);assert.equal(g.techIdle,before.tech);assert.equal(g.replyIdle,before.reply);assert.equal(g.trust,before.trust);assert.match(deadlineText(g),/03:00まで あと/);meetingAnswer(g,'meeting-good');assert.equal(g.minutes,before.minutes+1);
+test('実時間では時計が進まず、会議の回答でも選択時に10分進む',async()=>{
+ const {advanceIncidentTime,deadlineText}=await import('../dist/engine.js');const g=meetingGame();const before={minutes:g.minutes,clock:g.clock,tech:g.techIdle,reply:g.replyIdle,trust:g.trust};advanceIncidentTime(g,6);assert.equal(g.minutes,before.minutes);assert.equal(g.clock,before.clock);assert.equal(g.techIdle,before.tech);assert.equal(g.replyIdle,before.reply);assert.equal(g.trust,before.trust);assert.match(deadlineText(g),/03:00/);meetingAnswer(g,'meeting-good');assert.equal(g.minutes,before.minutes+10);
 });
 test('3時までの残り時間と超過を表示し新しい敗北条件は作らない',async()=>{
  const {advanceIncidentTime,deadlineText}=await import('../dist/engine.js');const g=createGame();start(g);assert.equal(deadlineText(g),'03:00まで あと1時間43分');g.minutes=180;advanceIncidentTime(g,6);assert.equal(deadlineText(g),'03:00 · 復旧期限です');g.minutes++;advanceIncidentTime(g,6);assert.equal(deadlineText(g),'03:00から 0時間01分超過');assert.equal(g.ended,false);assert.equal(g.trust,100);assert.equal(g.mental,100);g.incidentSeconds=25;const h=restoreGame(serializeGame(g));assert.equal(h.incidentSeconds,25);h.ended=true;const before=serializeGame(h);advanceIncidentTime(h,60);assert.equal(serializeGame(h),before);
@@ -292,4 +292,14 @@ test('序盤の一次報以外は社内共有も含め優先指示違反とし�
   g=restoreGame(serializeGame(g));execute(g,'tail -n 30 /logs/SALES_IMPORT.log');
   assert.equal(g.events.filter(e=>e.text.includes('信用-5・メンタル-5')).length,1);
  }
+});
+
+test('調査と報告は10分、検証・再実行・連携待ちは15分だけ進む',async()=>{
+ const {deadlineText}=await import('../dist/engine.js');const g=createGame({setbacks:false});start(g);
+ chooseAction(g,nextChoices(g).find(c=>c.id==='initial'));assert.equal(g.minutes,87);assert.equal(deadlineText(g),'03:00まで あと1時間33分');
+ execute(g,'tail -n 30 /logs/SALES_IMPORT.log');assert.equal(g.minutes,97);
+ send(g,'internal','連携元に確認','request-file');assert.equal(g.minutes,112);
+ execute(g,'check /data/inbox/sales_20261012.csv');assert.equal(g.minutes,127);
+ execute(g,'job rerun SALES_IMPORT');assert.equal(g.minutes,142);
+ const h=restoreGame(serializeGame(g));assert.equal(h.minutes,142);
 });

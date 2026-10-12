@@ -19,7 +19,7 @@ function event(g,text){g.events.push({time:g.minutes,text});}
 function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
 function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
-function act(g){g.actions++;g.minutes++;}
+function act(g,minutes=10){g.actions++;g.minutes+=minutes;}
 export function start(g){if(g.started||g.dispatch)return;g.started=true;g.firstReportInstruction=true;g.internalRequest={id:++g.internalRequestSeq,reason:'arrival',at:g.clock};push(g,'internal','森｜監視','現場対応はあなた一人です。鬼塚さんと田山さんは遠隔参加、私は監視側から状況を共有します。');push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地到着ありがとうございます。後続の売上集計は待機中です。');push(g,'internal','鬼塚｜リーダー','到着したな。電話に出るのがおせーんだよ。車内で状況は確認したよな？ まず、分かっている影響と次の対応を聞かせろ。実行判断は先に俺に確認してくれ。進展がない場合も90秒以内に報告しろ。');push(g,'internal','鬼塚｜リーダー','調査の前に、顧客へ一次報を送れ。原因は確認中でいい');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務への影響も回答してください。未確定の点は未確定と分けて、75秒以内に一度ご連絡ください。');event(g,'現地対応開始');}
 function urgentCall(g,reason){g.call=true;g.callSeen=true;g.callReason=reason;event(g,'操作直後に顧客から緊急着信');}
 function penalty(g,text,notifyCustomer=true){if(notifyCustomer)urgentCall(g,'操作後にまた異常を検知しています。いま何をしたんですか。経緯と影響を説明してください。');g.mistakes++;g.trust=Math.max(0,g.trust-22);g.mental=Math.max(0,g.mental-20);event(g,text);push(g,'internal','鬼塚｜リーダー',text);}
@@ -37,7 +37,7 @@ function requestApprovalCore(g,target){
 }
 export function execute(g,raw){return withDialogue(g,{kind:'command'},()=>executeCore(g,raw));}
 function executeCore(g,raw){
- if(g.ended||!g.started)return;const input=raw.trim();if(!input)return;act(g);push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
+ if(g.ended||!g.started)return;const input=raw.trim();if(!input)return;act(g,/^(?:job\s+rerun\s|check\s)/i.test(input)?15:10);push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
  const c=input.replace(/\s+/g,' ').replace(/;$/,'').trim();
  if(c==='help')return emit(g,'対応コマンドは候補ボタンから選択できます。入力欄で編集して実行してください。');
  if(/^job status(?: SALES_IMPORT)?$/i.test(c)){fresh(g,'status');return emit(g,`SALES_IMPORT  ${g.recovered?'NORMAL RC=0':g.lockEncountered?'ABEND RC=28':'ABEND RC=12'}\nSALES_SUMMARY ${g.recovered?'NORMAL RC=0':'WAITING'}\nACCOUNT_SYNC  ${g.secondary?'STOPPED（追加障害）':'RUNNING'}`);}
@@ -176,7 +176,7 @@ export class RuleBasedProvider {
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){return withDialogue(g,{kind:'message',id,channel},()=>sendCore(g,channel,text,id,provider));}
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g,['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?15:10);push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
  if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
  const reply=provider.respond(g,channel,text,id);if(channel==='internal'&&id==='internal-report'&&g.firstReportInstruction&&!g.reported&&!g.firstReportDelegated)return;push(g,channel,channel==='internal'?(infraQuery(id)?INFRA:['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
