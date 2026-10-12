@@ -8,7 +8,7 @@ export const commands = [
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
 export function createGame({setbacks=true}={}) {
- return {dispatch:null,dangerActions:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -78,7 +78,7 @@ export class RuleBasedProvider {
    if(id==='resend-file'){if(!g.mismatchSeen)return '再送の根拠がまだありません。まず受信ファイルを検証してください。';g.fileDamaged=false;g.mismatchSeen=false;g.facts.checked=false;g.facts.history=false;g.approved.delete('SALES_IMPORT');g.fileAt=g.minutes;progress(g);event(g,'欠損を連携元へ伝え、完全なファイルを再受信');return '欠損件数とチェックサム不一致を連携元に伝えました。完全なファイルを再受信しました。差し替えたので、内容と未処理状態を確認し直してください。';}
    if(id==='patch-file'){penalty(g,'勝手にデータを書き換えたのか？ お前、それで何かあったらどう説明するんだ？');return takeTayama(g,'patch',true);}
    if(id==='release-lock'){if(!g.lockInspected)return '保持元が分かっていない状態では解除できません。待機セッションを確認してください。';g.lockReleased=true;g.approved.delete('SALES_IMPORT');progress(g);event(g,'DB担当がREPORT_EXPORTの残存セッションを確認してロック解除');return 'DB担当に確認しました。REPORT_EXPORTは処理終了後のセッションだけが残っていました。担当側で終了し、ロック解除を確認しました。';}
-   if(id==='critic-approval')return takeTayama(g,'consult',true);
+   if(id==='critic-approval'){const issue=consultationIssue(g);if(!issue||consulted(g,issue))return '';g.tayamaConsulted=[...(g.tayamaConsulted||[]),issue];return takeTayama(g,issue==='missing-row'?'consultMissing':'consultLock',true);}
    if(id==='ack'){if(!g.ack){g.ack=true;progress(g);}return '分かった。で、どうすんだ？ お前の考えを聞いてるんだが。';}
    if(id==='request-file'){
     if(!g.facts.log||!g.facts.files)return 'ファイル未着と判断した根拠を確認してください。ログと受信ディレクトリの両方が必要です。';
@@ -104,7 +104,7 @@ export class RuleBasedProvider {
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){return withDialogue(g,{kind:'message',id,channel},()=>sendCore(g,channel,text,id,provider));}
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
  if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
  const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?(['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
@@ -140,6 +140,9 @@ function answerCallCore(g,choice){
 
 }
 export function time(g){return `${String(Math.floor(g.minutes/60)).padStart(2,'0')}:${String(g.minutes%60).padStart(2,'0')}`;}
+function consultationIssue(g){return g.mismatchSeen?'missing-row':g.lockEncountered&&!g.lockReleased&&g.lockInspected?'db-lock':null;}
+function consulted(g,issue){return Array.isArray(g.tayamaConsulted)&&g.tayamaConsulted.includes(issue);}
+
 function baseChoices(g){
  if(!g.started||g.ended||g.dispatch)return [];
  const command=(label,cmd)=>({label,type:'command',command:cmd,detail:'操作を実施したと報告'});
@@ -151,7 +154,8 @@ function baseChoices(g){
  const complete=mail('正常終了と件数一致を報告して対応を終える','complete','売上取込・後続集計の正常終了と1,248件の一致を確認しました。復旧を報告します。');
  const file=mail('影響件数と復旧見込みを、確認できた根拠で報告する','file-report',customerStatusText(g));
  const msg=(label,id,text)=>({label,type:'message',channel:'internal',id,text,detail:'社内へ連絡'});
- const critic=msg('田山に、その助言で実行してよいか確認する','critic-approval','田山さん、その助言を根拠に実行してよいですか。承認と責任の所在を確認したいです。');
+ const issue=consultationIssue(g);
+ const critic=consulted(g,issue)?(issue==='missing-row'?file:command('SQLでロック待ちと保持元を再確認する',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';")):msg('田山に具体的な対応案を聞く','critic-approval',issue==='missing-row'?'件数が1件不足し、チェックサムも不一致です。田山さん、具体的にはどう対応するのがよいでしょうか？':'DBロックで再実行が止まりました。保持元はREPORT_EXPORTで、更新0件・ロールバック済みです。田山さん、具体的にはどう進めるのがよいでしょうか？');
  if(!g.secondary&&g.setbacks){
   if(g.lockEncountered&&!g.lockReleased)return g.lockInspected?[msg('保持元をDB担当に伝え、解除可否を確認する','release-lock','保持元はREPORT_EXPORTのSESSION 812です。更新0件・ロールバック済みです。担当側で状態確認と解除をお願いします。'),rerun,critic]:[command('SQLでロック待ちと保持元セッションを調べる',"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';"),rerun,stop];
   if(g.mismatchSeen)return [msg('件数不一致とチェックサムを伝え、完全なファイルを再送依頼する','resend-file','1件欠損しチェックサムも不一致です。完全なファイルを再送してください。'),msg('自分の判断で、欠損した1件を手で補う','patch-file','欠損した1件を手で補いました。これで進めます。'),critic];
@@ -183,7 +187,7 @@ export function chooseAction(g,choice){
  if(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー'))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
  if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  
- if(!g.ended&&(repeatedReport||['wait-vendor','critic-approval','patch-file','complete'].includes(choice.id)))colleagueAdvance(g,choice,repeatedReport);
+ if(!g.ended&&(repeatedReport||['wait-vendor','patch-file','complete'].includes(choice.id)))colleagueAdvance(g,choice,repeatedReport);
 }
 function leaderFeedback(g,choice){
  const c=choice.command||'';
@@ -196,7 +200,7 @@ function leaderFeedback(g,choice){
   if(!g.internalReported)return '1,248件の一致まで確認できたな。社内向けにも復旧結果をまとめて。俺から上に返す説明が必要なんだ。';
   return '社内の復旧報告は受け取っている。残る顧客への連絡を頼む。';
  }
- if(choice.id==='critic-approval')return '実施判断は俺に確認してくれ。ただ、担当としての根拠と影響はお前から説明してほしい。';
+ if(choice.id==='critic-approval')return g.mismatchSeen?'田山さんの話は分かった。で、この欠損に対してお前はどうするつもりなんだ？':'一般的な話は分かった。今のロックに対して、担当としてどう進めたいんだ？';
  if(choice.id==='wait-vendor')return '連絡がつかないのは分かった。このまま待つ判断で、朝の業務への影響はどう説明する？';
  if(choice.id==='request-file')return g.file?'受信したんだな。まだ正常に処理できると決まったわけではないな。見通しが変わったら知らせて。':'連絡先が応答しないんだな。復旧時刻はまだ出せないとして、次の対応はどうすんだ？';
  if(choice.id==='resend-file'||choice.id==='escalate-file')return '受信したという事実は受け取った。未確認のまま復旧見込みを確約しないでくれ。';
@@ -238,7 +242,8 @@ const tayamaLines={
  failed:[['readiness','その状態では実行が通らない可能性はありましたね。結果が出た後に言うのも何ですが、少し判断を急いだ印象です。']],
  unauthorized:[['authority','結果とは別に、実施判断の経緯は残りますからね。進めてよいかどうかまで、私から申し上げられる話ではないですが。']],
  patch:[['dataOwnership','手修正を承認したわけではないので、その点は切り分けていただきたいですね。データの正当性は、修正された方から説明いただく必要があるかと。']],
- consult:[['decision','技術的な考え方は理解できます。ただ、実施の可否は現場のリーダー判断になりますね。担当としての見解を添えて、鬼塚さんに確認いただければ。'],['evidenceOwner','私は現物を見ていないので断言はできません。今回の状況を直接確認されている担当としては、どうお考えですか？']],
+ consultMissing:[['missingPlan','まず、受信データの正当性を確保することが重要ですね。件数だけ合えばよいという話でもありませんので。\n\nただ、現物を確認されているのはそちらです。具体的な進め方は、担当として整理いただくのがよいかと。']],
+ consultLock:[['lockPlan','処理同士の依存関係と、他の処理への影響を分けて考える必要がありますね。止まっている処理だけを見て判断できる話ではありませんので。\n\nどこまで影響を許容するかも含め、担当としての案を鬼塚さんに確認いただくのがよいかと思います。']],
  validated:[['validationCredit','検証結果がそろってきましたね。私も、こうして確認を積み重ねる方向がよいと思っていました。実行結果はまた別ですが。']],
  recovered:[['recoveryCredit','正常終了まで進みましたね。こういう場面で慎重に進められるのは、チームで状況を見てきたからだと思います。']],
  customer:[['communication','先方が不安になるのも分かります。確定していることと確認中のことを、どう伝えるかも重要ですね。'],['expectations','技術的な状況だけでなく、先方の受け止め方もありますからね。約束として受け取られる表現には気を配る必要があるかと。']],
@@ -250,7 +255,7 @@ function tayamaMemory(g){
  if(typeof g.tayamaLastKind!=='string'){const last=history.at(-1)?.text;g.tayamaLastKind=Object.entries(tayamaLines).find(([,lines])=>lines.some(([,text])=>text===last))?.[0]||null;}
  for(const [kind,lines] of Object.entries(tayamaLines))for(const [topic,text] of lines)if(history.some(m=>m.text===text))used.add(kind+':'+topic);
  // Old saves have no IDs. Retire equivalent old observations instead of repeating them.
- const legacy={investigation:/全体最適/,vendor:/連携障害/,mismatch:/データの整合性/,lock:/ロック競合/,consult:/私の立場として|方向性を提示/,patch:/手修正の判断を承認/};
+ const legacy={investigation:/全体最適/,vendor:/連携障害/,mismatch:/データの整合性/,lock:/ロック競合/,patch:/手修正の判断を承認/};
  for(const [kind,re] of Object.entries(legacy))if(history.some(m=>re.test(m.text)))for(const [topic] of tayamaLines[kind])used.add(kind+':'+topic);
  g.tayamaUsed=[...used];return used;
 }
@@ -381,7 +386,7 @@ function variedFeedback(g,choice){
 function colleagueAdvance(g,choice,repeatedReport){
  if(g.dispatch||g.ended)return;
  const next=baseChoices(g)[0];if(!next)return;
- const reason=repeatedReport?'同じ報告を繰り返してどうする。状況が変わってないだろ。':choice.id==='critic-approval'?'田山さんに判断を預けて終わりか？ お前が担当だろ。':choice.id==='wait-vendor'?'待ってるだけじゃ朝になるぞ。森、そっちで進めてくれ。':choice.id==='complete'?'確認も終わってないのに完了って言ったのか。森、残りを引き取ってくれ。':choice.id==='patch-file'?'その場しのぎで増やした手間、誰が片付けるんだ。森、頼む。':'もう確認したことを繰り返してるぞ。森、先へ進めてくれ。';
+ const reason=repeatedReport?'同じ報告を繰り返してどうする。状況が変わってないだろ。':choice.id==='wait-vendor'?'待ってるだけじゃ朝になるぞ。森、そっちで進めてくれ。':choice.id==='complete'?'確認も終わってないのに完了って言ったのか。森、残りを引き取ってくれ。':choice.id==='patch-file'?'その場しのぎで増やした手間、誰が片付けるんだ。森、頼む。':'もう確認したことを繰り返してるぞ。森、先へ進めてくれ。';
  push(g,'internal','鬼塚｜リーダー',reason);
  g.assistCount=(g.assistCount||0)+1;g.mistakes++;g.mental=Math.max(0,g.mental-10);g.trust=Math.max(0,g.trust-6);
  event(g,'停滞した対応を森が引き取り、次の作業を代行（信用 −6・メンタル −10）');
