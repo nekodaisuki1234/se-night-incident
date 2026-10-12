@@ -9,7 +9,7 @@ export const commands = [
 ];
 export function createGame({setbacks=true}={}) {
  return {incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
- facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,cleanupCompletedAt:null,successEnding:null,
+ facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,customerReport:null,cleanupCompletedAt:null,successEnding:null,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
  messages:{internal:[],customer:[]},timeline:[],events:[],unread:{internal:0,customer:0}};
@@ -140,6 +140,30 @@ function infrastructureReply(g,id){
   +'データの整合性についても、こちらでは判断できません。この回答は実行承認ではありません。'+infraDeadlineText(g);
 }
 
+function missingCustomerChecks(g){
+ const missing=[];
+ if(!g.recovered)missing.push('売上取込の正常終了');
+ if(g.setbacks&&!g.lockReleased)missing.push('DBロックの解除');
+ if(!g.facts.summary)missing.push('後続の売上集計の確認');
+ if(!g.facts.count)missing.push('SQLで処理件数の照合');
+ if(!g.internalReported)missing.push('社内への復旧報告');
+ if(g.secondary)missing.push('口座同期の追加障害の復旧確認');
+ return missing;
+}
+function remainingCleanupText(g){
+ if(!g.facts.summary)return '後続の売上集計を確認してくれ';
+ if(!g.facts.count)return 'SQLで処理件数を照合してくれ';
+ if(!g.impactReviewed)return '遅延対象と未処理・要フォロー事項を整理してくれ';
+ if(!g.internalReported)return '社内への復旧報告をまとめてくれ';
+ if(!g.handoverDone)return 'あとは対応経緯と残件をまとめて、引き継ぎを残してくれ';
+ return '確認・報告・引き継ぎまで受け取った';
+}
+function customerCompletionFeedback(g){
+ if(g.customerCompleted)return '顧客の了承は取れたな。'+remainingCleanupText(g)+'。';
+ const missing=g.customerReport?.missing||missingCustomerChecks(g);
+ return (g.recovered?'ジョブの正常終了は確認できている。':'')+missing.join('、')+'が残っているな。確認できた事実を整理して、追加で報告してくれ。';
+}
+
 export class RuleBasedProvider {
  respond(g,channel,text,id){
   if(channel==='internal'){
@@ -187,7 +211,8 @@ export class RuleBasedProvider {
    return customerReply(g)+' 影響件数と復旧見込みは、根拠と未確定の点を分けて、更新があれば連絡してください。';
   }
   if(id==='complete'){
-   if(!(g.recovered&&(!g.setbacks||g.lockReleased)&&g.facts.summary&&g.facts.count&&g.internalReported&&!g.secondary)){g.trust=Math.max(0,g.trust-12);event(g,'検証がそろう前に復旧報告');return 'まだ復旧完了として受け取れません。'+objectiveText(g);}
+   const missing=missingCustomerChecks(g);g.customerCompleted=missing.length===0;g.customerReport={status:g.customerCompleted?'accepted':'needs-confirmation',missing,time:g.minutes};
+   if(!g.customerCompleted){g.trust=Math.max(0,g.trust-12);event(g,'検証がそろう前に復旧報告');return (g.recovered?'ジョブの正常終了は承知しました。':'')+'復旧報告の了承には、'+missing.join('、')+'が必要です。確認後に追加で報告してください。';}
    g.replyIdle=0;g.replyLevel=0;g.customerCompleted=true;event(g,'顧客へ正常終了・件数一致を復旧報告');return '正常終了と件数一致を確認しました。対応ありがとうございました。操作経緯は報告書に残してください。';
   }
   return 'その報告だけでは状況を判断できません。初版では定型文で現状・次の対応を報告してください。';
@@ -195,10 +220,11 @@ export class RuleBasedProvider {
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){return withDialogue(g,{kind:'message',id,channel},()=>sendCore(g,channel,text,id,provider));}
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}if(!act(g,['wait-vendor','resend-file'].includes(id)?15:10))return;push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;if(channel==='customer'&&id==='complete'&&g.customerCompleted)return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}if(!act(g,['wait-vendor','resend-file'].includes(id)?15:10))return;push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
  if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
  const reply=provider.respond(g,channel,text,id);if(channel==='internal'&&id==='internal-report'&&g.firstReportInstruction&&!g.reported&&!g.firstReportDelegated)return;push(g,channel,channel==='internal'?(infraQuery(id)?INFRA:['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
+ if(channel==='customer'&&id==='complete')push(g,'internal','鬼塚｜リーダー',customerCompletionFeedback(g));
 }
 export function parseCommandReport(raw){
  const text=raw.trim();
@@ -308,10 +334,11 @@ export function chooseAction(g,choice){
 }
 function leaderFeedback(g,choice){
  const c=choice.command||'';
- if(choice.id==='complete')return g.ended?'顧客への復旧報告まで受け取った。上席にもこの結果を返す。操作経緯は報告書に残してくれ。':'まだ完了として受け取れないと返っているな。確認済みの事実と、残っている点を分けて報告して。';
+ if(choice.id==='complete')return customerCompletionFeedback(g);
  if(choice.channel==='customer')return '確認できた事実と、まだ確定していない点は受け取った。その内容で説明しよう。次の進展があったら共有してくれ。';
  if(g.secondary)return '口座同期の追加影響もある。売上取込とは分けて説明が必要だ。再開の結果を報告して。';
  if(g.recovered){
+  if(g.customerCompleted)return customerCompletionFeedback(g);
   if(!g.facts.summary)return '取込の正常終了は受け取った。後続についても確認した結果が欲しい。顧客に完了と言える状態か、整理して。';
   if(!g.facts.count)return '後続の正常終了も確認できたな。入力と処理の件数は合っている？ そこまで含めて報告してくれ。';
   if(!g.internalReported)return '1,248件の一致まで確認できたな。社内向けにも復旧結果をまとめて。俺から上に返す説明が必要なんだ。';
@@ -476,7 +503,7 @@ export function objectiveText(g){
   if(!g.facts.summary)return '売上取込は正常終了。後続の売上集計の確認が残っています。';
   if(!g.facts.count)return '売上取込・後続とも正常終了。SQLで処理件数の確認が残っています。';
   if(!g.impactReviewed)return '05:00までのジョブ復旧は完了。遅延対象・未処理・日中への要フォロー事項を整理します。';
-  if(g.internalReported&&g.customerCompleted)return '社内・顧客報告は完了。操作履歴・対応経緯・引き継ぎ事項の記録が残っています。';
+  if(g.internalReported&&g.customerCompleted)return g.handoverDone?'社内・顧客報告と引き継ぎ記録は完了しています。':'社内・顧客報告は完了。操作履歴・対応経緯・引き継ぎ事項の記録が残っています。';
   if(!g.internalReported)return '復旧確認は完了。社内に正常終了・入力とDBの1,248件一致を報告します。';
   return '復旧確認は完了。顧客へ「正常終了と件数一致」を報告します。その後、対応経緯と引き継ぎを記録します。';
  }

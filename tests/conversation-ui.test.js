@@ -89,3 +89,9 @@ test('成功エンドの暗転途中を保存して再開しても台詞が重�
  const h=ui();h.run("g.recovered=true;g.recoveredAt=290;g.minutes=340;g.facts.summary=true;g.facts.count=true;g.impactReviewed=true;g.internalReported=true;g.customerCompleted=true;send(g,'internal','記録','handover');g.endingVisible=g.endingStart+3;");
  const saved=h.run('serializeGame(g)'),n=h.run('g.timeline.length');const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.timeline.length'),n);assert.equal(resumed.el('success-blackout').hidden,false);assert.equal(resumed.el('result').open,false);resumed.el('success-result').onclick();assert.equal(resumed.el('result').open,true);
 });
+
+test('顧客了承の表示中に連打・再開しても鬼塚の未了承返信を追加しない',async()=>{
+ const h=ui();h.run("g.recovered=true;g.recoveredAt=290;g.minutes=312;g.file=true;g.facts.log=g.facts.files=g.facts.checked=g.facts.history=g.facts.summary=g.facts.count=true;g.impactReviewed=g.internalReported=true;render();");
+ const b=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('顧客へ正常終了'));assert.ok(b);const before=h.run('g.actions');b.onclick();b.onclick();const saved=h.run('serializeGame(g)');await h.drain();assert.equal(h.run('g.actions'),before+1);assert.equal(h.run('g.customerCompleted'),true);assert.equal(h.run("g.timeline.filter(m=>m.text.startsWith('顧客の了承は取れたな')).length"),1);assert.equal(h.run("g.timeline.some(m=>m.text.includes('まだ完了として受け取れない'))"),false);
+ const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.actions'),before+1);assert.equal(resumed.run("g.timeline.filter(m=>m.text.startsWith('顧客の了承は取れたな')).length"),1);assert.ok(resumed.el('choices').children.some(b=>b.children[1]?.textContent.includes('引き継ぎ事項を記録')));
+});
