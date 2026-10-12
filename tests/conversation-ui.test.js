@@ -106,3 +106,10 @@ test('通常出勤の結果画面も報告担当変更と単独報告見送り�
  const h=ui();h.run("g.upperReporter='onizuka';changeTrust(g,0);g.recovered=true;g.recoveredAt=290;g.minutes=340;g.facts.summary=true;g.facts.count=true;g.impactReviewed=true;g.internalReported=true;g.customerCompleted=true;send(g,'internal','記録','handover');playReplies();");
  await h.drain();h.el('success-result').onclick();const texts=h.el('result-stats').children.map(e=>e.textContent);assert.equal(h.el('result-title').textContent,'END：通常出勤');assert.ok(texts.includes('成功'));assert.ok(texts.includes('鬼塚へ担当変更'));assert.ok(texts.includes('現地対応を継続。単独での上席報告は当面見送り。'));assert.ok(texts.includes('60 / 100'));
 });
+
+test('顧客への遅い撤回から訂正三択へ進み、材料提出は一度だけ5分で復旧操作はしない',async()=>{
+ const h=ui();h.run("answerCall(g,'promise');execute(g,'job status');visible=g.timeline.length;render();");
+ const button=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('根拠のない復旧時刻を訂正'));assert.ok(button);button.onclick();await h.drain();
+ assert.equal(h.el('choices').children.length,3);const facts=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('鬼塚へ共有'));assert.ok(facts);const at=h.run('g.minutes');facts.onclick();facts.onclick();await h.drain();assert.equal(h.run('g.minutes'),at+5);assert.equal(h.run('g.customerPromise.explanationCompleted'),true);assert.equal(h.run('g.recovered'),false);
+ assert.ok(h.run("g.timeline.some(m=>m.channel==='customer'&&m.text.includes('業務側へ再案内します'))"));const saved=h.run('serializeGame(g)');const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.minutes'),at+5);assert.equal(resumed.run('g.customerPromise.explanationCompleted'),true);
+});

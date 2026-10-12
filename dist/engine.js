@@ -8,7 +8,7 @@ export const commands = [
  ['別系統の停止','job stop ACCOUNT_SYNC'],['別系統の再開','job rerun ACCOUNT_SYNC']
 ];
 export function createGame({setbacks=true}={}) {
- return {evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,customerReport:null,cleanupCompletedAt:null,successEnding:null,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -19,6 +19,7 @@ export function trustLimit(g){return g.managerEnding?20:g.upperReporter==='onizu
 export function changeTrust(g,delta){g.trust=Math.max(0,Math.min(trustLimit(g),g.trust+delta));}
 export function resultAssessment(g){
  const rows=[['復旧',g.recovered?(recoveredInTime(g)?'成功':'期限超過で復旧'):'未復旧'],['上席報告',g.upperReporter==='onizuka'?'鬼塚へ担当変更':'担当変更なし']];
+ if(g.customerPromise?.managerRequired||g.customerPromiseHistory?.some(p=>p.managerRequired))rows.push(['顧客対応',g.customerPromise?.managerRequired&&!g.customerPromise.explanationCompleted?'復旧見込みの訂正・責任者説明が未完了':'復旧見込みの訂正・責任者説明あり']);
  if(g.managerEnding)return [...rows,['終了理由','誤操作による二次障害'],['操作',g.managerEnding.operation],['影響',g.managerEnding.impact],['処遇','本番操作権限停止／担当継続不可'],['後日談','翌朝、本番環境の操作権限が停止された。以後の対応は別の担当者に引き継がれた。']];
  if(g.upperReporter==='onizuka')rows.push(['評価',g.successEnding||!g.ended?'現地対応を継続。単独での上席報告は当面見送り。':'上席報告は鬼塚へ変更。最終的な処遇は終了理由のとおり。']);
  else if(g.successEnding)rows.push(['評価','現地対応と上席報告を担当し、残処理まで完了。']);
@@ -31,6 +32,59 @@ function assessMeeting(g,takenOver=false){
  changeTrust(g,-trust);g.mental=Math.max(0,g.mental-mental);
  paid.trust=Math.max(paid.trust,target.trust);paid.mental=Math.max(paid.mental,target.mental);
  if(trust||mental)event(g,'Zoom評価：'+(takenOver?'説明を立て直せず、上席報告を鬼塚へ変更（信用上限60）':'根拠のない復旧確約')+'（信用 −'+trust+'・メンタル −'+mental+'）');
+}
+function promisePending(g){return !!g.customerPromise&&!g.customerPromise.explanationCompleted;}
+function recordPromise(g){
+ if(promisePending(g)){event(g,'訂正未完了のまま再び根拠なく5分以内と確約');return;}
+ if(g.customerPromise)g.customerPromiseHistory.push({...g.customerPromise,used:[...g.customerPromise.used]});
+ g.customerPromise={madeAt:g.minutes,promisedAt:g.minutes+5,recoveredAt:g.recoveredAt,correctedAt:null,overdue:false,managerRequired:false,explanationCompleted:false,completedAt:null,nextReportAt:null,nextReportSent:false,nextReminder:false,used:[]};
+ event(g,'根拠なく'+time({minutes:g.minutes+5})+'までの復旧を確約');
+}
+function checkPromise(g){
+ const p=g.customerPromise;if(!p)return;p.recoveredAt=g.recoveredAt;
+ if(g.ended||g.dispatch||g.managerEnding||meetingActive(g))return;
+ if(!p.overdue&&p.correctedAt===null&&g.minutes>p.promisedAt&&(!Number.isFinite(p.recoveredAt)||p.recoveredAt>p.promisedAt)){
+  p.overdue=true;p.managerRequired=true;g.replyIdle=0;g.replyLevel=0;
+  event(g,'復旧の約束時刻'+time({minutes:p.promisedAt})+'を超過。責任者による訂正説明が必要');
+  push(g,'customer','高橋｜顧客','先ほど、5分以内に復旧すると伺いましたが、現在どうなっていますか。その見込みで業務側には案内しています。');
+  push(g,'internal','鬼塚｜リーダー','【個別】5分って誰が判断した？ 俺はその時刻で約束しろとは言ってないぞ');
+  push(g,'internal','鬼塚｜リーダー','【個別】原因調査のほかに、今度はその説明まで必要になったわけだな');
+ }
+ if(p.explanationCompleted&&!p.nextReportSent&&!p.nextReminder&&g.minutes>=p.nextReportAt){p.nextReminder=true;push(g,'customer','高橋｜顧客','訂正時にお約束いただいた'+time({minutes:p.nextReportAt})+'の状況報告をお願いします。進展がない場合も、確認中の事項をお知らせください。');event(g,'訂正後の次回状況報告時刻に到達');}
+}
+function retractPromise(g){
+ const p=g.customerPromise;if(!promisePending(g)||p.correctedAt!==null)return;
+ checkPromise(g);if(g.ended||g.dispatch)return;p.correctedAt=g.minutes;g.correctionNeeded=false;g.replyIdle=0;g.replyLevel=0;
+ push(g,'customer','あなた','先ほどの5分以内という復旧確約には根拠がありませんでした。撤回します。'+customerStatusText(g));
+ event(g,p.overdue?'根拠なく復旧時刻を確約。約束超過後に撤回し、責任者による顧客説明が発生':g.minutes<=p.promisedAt?'約束時刻より前に自主訂正。根拠のない復旧確約を撤回':'期限内に復旧済み。根拠のなかった復旧確約を訂正');
+ push(g,'customer','高橋｜顧客',p.managerRequired?'その見込みで業務側へ案内済みです。訂正理由と現在分かっている影響、次回報告時刻を、責任者から説明してください。':'承知しました。では、次回の報告時刻を教えてください。');
+ if(p.managerRequired)push(g,'internal','鬼塚｜リーダー','顧客への説明は俺から入れる。お前は、何を確認して5分と言ったのか、実際に確認できていたことと分けて整理して送れ');
+}
+function correctionChoices(g){
+ const p=g.customerPromise;if(!promisePending(g)||p.correctedAt===null)return null;
+ const recovery=Number.isFinite(g.recoveredAt)?'対象ジョブは'+time({minutes:g.recoveredAt})+'に正常終了しました。':'';
+ const facts='復旧確約の根拠はありませんでした。'+recovery+internalStatusText(g);
+ const choices=[{type:'correction',id:'promise-facts',label:p.managerRequired?'根拠のない確約・確認済みの事実・未確認事項と次回報告時刻を鬼塚へ共有する':'確認済みの事実・未確認事項を整理し、次回報告時刻を顧客へ伝える',text:facts}];
+ if(!p.used.includes('promise-blame')&&!g.timeline.some(m=>m.sender.startsWith('田山')&&/5分/.test(m.text)))choices.push({type:'correction',id:'promise-blame',label:'田山さんの話から、すぐ直ると思ったと説明する',text:'田山さんの話から、すぐ直ると思いました。'});
+ if(!p.used.includes('promise-hurry'))choices.push({type:'correction',id:'promise-hurry',label:'とにかく急いで対応していますと伝える',text:'とにかく急いで対応しています。'});
+ for(const c of baseChoices(g).filter(c=>c.type==='command'&&!/rerun|stop/.test(c.command)))if(choices.length<3)choices.push(c);
+ for(const command of ['job status','tail -n 30 /logs/SALES_IMPORT.log'])if(choices.length<3&&!choices.some(c=>c.command===command))choices.push({type:'command',command,label:command==='job status'?'ジョブの状態を確認する':'異常ログを再確認する'});
+ return choices;
+}
+function answerCorrection(g,choice){
+ const p=g.customerPromise;if(!promisePending(g)||p.correctedAt===null||p.used.includes(choice.id))return;
+ // A valid materials submission costs five minutes, once. Wrong answers use the normal ten-minute action; no extra score penalty.
+ act(g,choice.id==='promise-facts'?5:10);p.used.push(choice.id);
+ if(endForDeadline(g))return;
+ push(g,'internal','あなた',choice.text);
+ if(choice.id!=='promise-facts'){push(g,'internal','鬼塚｜リーダー',choice.id==='promise-blame'?'田山さんは5分で直ると言ったのか？ お前の見込みと、人から確認した事実を混ぜるな':'急いでるかどうかを聞いてるんじゃない。何を根拠に約束したか聞いてるんだ');event(g,'訂正説明が未完了：'+choice.text);return;}
+ p.nextReportAt=g.minutes+10;p.explanationCompleted=true;p.completedAt=g.minutes;g.replyIdle=0;g.replyLevel=0;
+ const followup='次回は'+time({minutes:p.nextReportAt})+'までに、進展がなくても状況を報告します。';
+ push(g,'internal','あなた',followup);
+ if(p.managerRequired){push(g,'internal','鬼塚｜リーダー','材料は受け取った。顧客への訂正説明は俺から電話で入れる。現地の調査・対応は続けてくれ。');push(g,'customer','鬼塚｜リーダー','【電話・訂正説明】担当者の復旧確約には根拠がありませんでした。'+(Number.isFinite(g.recoveredAt)?'対象ジョブは'+time({minutes:g.recoveredAt})+'に正常終了しています。':'')+customerStatusText(g)+followup);}
+ else push(g,'customer','あなた',choice.text+followup);
+ push(g,'customer','高橋｜顧客',p.managerRequired?'訂正内容は承知しました。業務側へ再案内します。次回はその時刻までに、進展がなくてもご連絡ください。':'次回の報告時刻を承知しました。進展がなくても、その時刻までに状況をお知らせください。');
+ event(g,(p.managerRequired?'責任者から顧客へ訂正説明、業務側への再案内を依頼':'自主訂正の説明完了')+'。次回状況報告 '+time({minutes:p.nextReportAt}));
 }
 function push(g,channel,sender,text){if(!text)return;if(sender==='鬼塚｜リーダー'&&!text.includes('承認する')&&g.timeline.some(m=>m.sender===sender&&m.text===text))return;const message={sender,text,time:g.minutes,channel};g.timeline.push(message);if(g.messages[channel]){g.messages[channel].push(message);if(sender!=='あなた')g.unread[channel]++;}}
 function event(g,text){g.events.push({time:g.minutes,text});}
@@ -238,8 +292,11 @@ export class RuleBasedProvider {
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){return withDialogue(g,{kind:'message',id,channel},()=>sendCore(g,channel,text,id,provider));}
 function sendCore(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;if(channel==='customer'&&id==='complete'&&g.customerCompleted)return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}if(!act(g,['wait-vendor','resend-file'].includes(id)?15:10))return;push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;
+ if(channel==='customer'&&['progress-report','file-report','initial','complete'].includes(id)&&promisePending(g)){if(g.customerPromise.correctedAt===null)retractPromise(g);else push(g,'customer','高橋｜顧客','訂正理由と確認済みの事実、次回報告時刻の説明がまだ完了していません。');return;}
+ if(id==='handover'&&promisePending(g))return;if(channel==='customer'&&id==='complete'&&g.customerCompleted)return;if(id==='initial'&&g.firstReportDelegated)return;if(id==='internal-report'&&(channel!=='internal'||!g.internalRequest||text!==internalStatusText(g)))return;if(infraQuery(id)&&(channel!=='internal'||!infraStage(g)||infraAsked(g,id)))return;if(id==='critic-approval'&&(!consultationIssue(g)||consulted(g,consultationIssue(g))))return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}if(!act(g,['wait-vendor','resend-file'].includes(id)?15:10))return;push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
+ if(channel==='customer'&&g.customerPromise?.explanationCompleted)g.customerPromise.nextReportSent=true;
  if(channel==='customer')push(g,'internal','あなた','顧客への報告内容を共有します。'+text.trim());
  const reply=provider.respond(g,channel,text,id);if(channel==='internal'&&id==='internal-report'&&g.firstReportInstruction&&!g.reported&&!g.firstReportDelegated)return;push(g,channel,channel==='internal'?(infraQuery(id)?INFRA:['patch-file','critic-approval'].includes(id)?'田山｜ベテラン':['request-file','escalate-file','wait-vendor','resend-file','release-lock'].includes(id)?'森｜監視':'鬼塚｜リーダー'):'高橋｜顧客',reply);
  if(channel==='customer'&&id==='complete')push(g,'internal','鬼塚｜リーダー',customerCompletionFeedback(g));
@@ -258,18 +315,20 @@ function tickCore(g,seconds){
  if(!g.started||g.ended)return;g.clock+=seconds;g.techIdle+=seconds;g.replyIdle+=seconds;
  const t=Math.min(3,Math.floor(g.techIdle/90)),r=Math.min(3,Math.floor(g.replyIdle/75));
  if(t>g.techLevel){if(t<3)requestInternalStatus(g,'timer');g.techLevel=t;g.mental=Math.max(0,g.mental-8);changeTrust(g,-8);push(g,'internal','鬼塚｜リーダー',['','状況の共有を頼む。確認できたことと、まだ分からないことは分けてくれ。','進展がないまま時間が過ぎている。次の対応はどうすんだ？ こっちも説明しないといけないんだよ。','このまま任せ続ける判断はできない。担当を交代する。これ以上の操作は止めてくれ。'][t]);if(t===3)finish(g,'対応交代');}
- if(r>g.replyLevel&&!g.ended){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);changeTrust(g,-8);push(g,'customer','高橋｜顧客',['','作業を進めていただいているとは思いますが、こちらから確認する前に、一度ご連絡いただけるものと思っておりました。現状を共有いただけますか。','その後のご連絡がないため、お電話しました。作業と並行で大変かとは思いますが、ご連絡まで含めて対応いただけると助かります。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','「こちらから確認する前にご連絡いただけるものと思っていた」とのことです。','作業と並行して、連絡まで含めて対応してほしいとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
- if(g.clock>=25&&!g.callSeen){g.callSeen=true;g.call=true;}
+ if(r>g.replyLevel&&!g.ended&&!promisePending(g)&&!(g.customerPromise?.explanationCompleted&&!g.customerPromise.nextReportSent)){g.replyLevel=r;g.mental=Math.max(0,g.mental-8);changeTrust(g,-8);push(g,'customer','高橋｜顧客',['','作業を進めていただいているとは思いますが、こちらから確認する前に、一度ご連絡いただけるものと思っておりました。現状を共有いただけますか。','その後のご連絡がないため、お電話しました。作業と並行で大変かとは思いますが、ご連絡まで含めて対応いただけると助かります。','回答がありません。責任者に対応を引き継いでください。'][r]);push(g,'internal','森｜監視','顧客から進捗連絡の催促が来ています。メールの内容を共有します：'+['','「こちらから確認する前にご連絡いただけるものと思っていた」とのことです。','作業と並行して、連絡まで含めて対応してほしいとのことです。','責任者への引き継ぎを求められています。'][r]);if(r===2){g.call=true;}if(r===3)finish(g,'対応交代');}
+ if(g.clock>=25&&!g.callSeen&&!promisePending(g)){g.callSeen=true;g.call=true;}
 }
 export function answerCall(g,choice){return withDialogue(g,{kind:'call',choice,urgent:g.callReason},()=>answerCallCore(g,choice));}
 function answerCallCore(g,choice){
- if(g.ended&&!g.callReason)return;const urgent=g.callReason;if(!act(g))return;g.call=false;g.callReason=null;
+ if(g.ended&&!g.callReason)return;
+ if(choice==='explain'&&promisePending(g)){g.call=false;g.callReason=null;retractPromise(g);return;}
+ const urgent=g.callReason;if(!act(g))return;g.call=false;g.callReason=null;
  if(urgent)push(g,'customer','高橋｜顧客','【緊急電話】'+urgent);
  const text=choice==='ignore'?'電話には応答せず、メールで対応します。':choice==='promise'?'電話で5分以内の復旧を約束しました。':`電話で現状を説明しました。${customerStatusText(g)}`;
  push(g,'customer','あなた',text);
  if(choice==='ignore'){changeTrust(g,-5);push(g,'customer','高橋｜顧客','電話に出られないなら、メールで状況を報告してください。');}
- else if(choice==='promise'){g.correctionNeeded=true;g.mental=Math.max(0,g.mental-10);changeTrust(g,-15);push(g,'customer','高橋｜顧客','5分で復旧する根拠は何ですか。原因と手順は確認済みですか。');}
- else{g.callAnswered=true;g.replyIdle=0;g.replyLevel=0;push(g,'customer','高橋｜顧客',urgent?'経緯は聞きました。勝手な判断で影響を広げられては困ります。確認できた結果を必ず報告してください。':'現在の確認状況、承知しました。残っている作業の結果が分かったら報告してください。');}
+ else if(choice==='promise'){recordPromise(g);g.correctionNeeded=true;g.mental=Math.max(0,g.mental-10);changeTrust(g,-15);push(g,'customer','高橋｜顧客','5分で復旧する根拠は何ですか。原因と手順は確認済みですか。');}
+ else{if(g.customerPromise?.explanationCompleted)g.customerPromise.nextReportSent=true;g.callAnswered=true;g.replyIdle=0;g.replyLevel=0;push(g,'customer','高橋｜顧客',urgent?'経緯は聞きました。勝手な判断で影響を広げられては困ります。確認できた結果を必ず報告してください。':'現在の確認状況、承知しました。残っている作業の結果が分かったら報告してください。');}
  push(g,'internal','あなた',choice==='promise'?'顧客に5分以内の復旧を約束しましたが、根拠を問われています。':choice==='ignore'?'顧客の電話には応答しませんでした。メールで状況を伝える必要があります。':'電話対応の共有です。'+customerStatusText(g));event(g,'顧客の電話に対応');
  push(g,'internal','鬼塚｜リーダー',choice==='ignore'?'電話を取らないなら、メールを先に出せ。無応答のまま放置して信用を落とすな。':choice==='promise'?'その5分、何を根拠に言ってる？ 顧客に伝えていい数字なのか。後から違いましたじゃ済まない。根拠がないなら訂正してくれ。':'確認できた事実と残っている点は伝わったな。その説明は受け取った。次の進展があったら共有してくれ。');
 
@@ -333,7 +392,8 @@ function baseChoices(g){
 
 export function chooseAction(g,choice){
  if(g.dispatch||!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
- if(choice.type==='meeting'){try{answerMeeting(g,choice);}finally{endForDeadline(g);}return;}
+ if(choice.type==='meeting'){try{answerMeeting(g,choice);}finally{endForDeadline(g);checkPromise(g);}return;}
+ if(choice.type==='correction'){answerCorrection(g,choice);checkPromise(g);return;}
  if(choice.type==='infra-menu'){g.infraMenu=choice.id==='infra-open';return;}
  g.infraMenu=false;
  const before=g.timeline.length;
@@ -343,7 +403,7 @@ export function chooseAction(g,choice){
  if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
  else if(choice.type==='approval')requestApproval(g,choice.target);
  else send(g,choice.channel,choice.text,choice.id);
- if(g.ended||g.managerEnding||g.dispatch||meetingActive(g)||infraQuery(choice.id))return;
+ if(g.ended||g.managerEnding||g.dispatch||meetingActive(g)||infraQuery(choice.id)||promisePending(g))return;
  if(!(g.facts.files&&!g.recovered&&!g.upperReportRequested)&&(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー')))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
  if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  
@@ -388,9 +448,10 @@ export function progressText(g){
 }
 export function nextChoices(g){
  if(meetingActive(g))return meetingChoices(g);
+ if(!g.ended&&!g.dispatch){const correction=correctionChoices(g);if(correction)return correction;}
  const choices=baseChoices(g);if(!choices.length)return choices;
  if(g.internalRequest){const slot=choices[1]?.id==='infra-open'||(!g.facts.log&&choices[1]?.channel==='customer')?2:1;choices[slot]={label:'現在の状況と次の対応を報告する',type:'message',channel:'internal',id:'internal-report',requestId:g.internalRequest.id,text:internalStatusText(g),detail:'鬼塚へ状況報告・作業は実行しない'};}
- if(g.correctionNeeded||g.replyIdle>=60){if(g.internalRequest&&choices[2]?.id==='internal-report'){choices[1]=choices[2];}choices[2]={label:g.correctionNeeded?'根拠のない復旧時刻を訂正し、現在の状況を伝える':'顧客に現在の確認状況と、次の対応を報告する',type:'message',channel:'customer',id:'progress-report',text:(g.correctionNeeded?'先ほどの5分以内の復旧見込みは根拠がなく、訂正します。':'')+customerStatusText(g),detail:'顧客へメール'};}
+ if(g.correctionNeeded||g.replyIdle>=60||(g.customerPromise?.nextReminder&&!g.customerPromise.nextReportSent)){if(g.internalRequest&&choices[2]?.id==='internal-report'){choices[1]=choices[2];}choices[2]={label:g.correctionNeeded?'根拠のない復旧時刻を訂正し、現在の状況を伝える':'顧客に現在の確認状況と、次の対応を報告する',type:'message',channel:'customer',id:'progress-report',text:(g.correctionNeeded?'先ほどの5分以内の復旧見込みは根拠がなく、訂正します。':'')+customerStatusText(g),detail:'顧客へメール'};}
  if(g.setbacks){const offset=g.actions%3;return [...choices.slice(offset),...choices.slice(0,offset)];}
  return choices;
 }
@@ -461,7 +522,7 @@ function withDialogue(g,context,run){
  const outer=dialogueDepth===0;
  const before={actions:g.actions,terminal:g.terminal.length,messages:g.timeline.length,events:g.events.length,secondary:g.secondary,mistakes:g.mistakes,mismatchSeen:g.mismatchSeen,lockEncountered:g.lockEncountered,recovered:g.recovered,checked:g.facts.checked,replyLevel:g.replyLevel,fileRequested:g.fileRequested,log:g.facts.log};
  dialogueDepth++;
- try{return run();}finally{dialogueDepth--;if(outer){delegateFirstReport(g,before);criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);endForDeadline(g);maybeSuccess(g);if(context.kind!=='tick')maybeMeeting(g);}}
+ try{return run();}finally{dialogueDepth--;if(outer){delegateFirstReport(g,before);criticComment(g,context,before);assessDanger(g,context,before);announceInfrastructure(g);endForDeadline(g);checkPromise(g);maybeSuccess(g);if(context.kind!=='tick'&&!(promisePending(g)&&g.customerPromise.correctedAt!==null))maybeMeeting(g);}}
 }
 
 function assessDanger(g,context,before){
@@ -517,6 +578,7 @@ export function objectiveText(g){
  if(meetingActive(g))return '社内Zoomで報告中です。現地操作と報告遅延の計時を一時停止しています。';
  if(g.dispatch)return g.dispatch.phase==='travelling'?'鬼塚がタクシーで移動中です。操作を停止し、そのまま待機してください。':'鬼塚が現場に到着。担当交代となりました。';
  if(g.secondary)return 'ACCOUNT_SYNCの再開と正常稼働の確認が残っています。';
+ if(promisePending(g))return (g.recovered?'ジョブ復旧済み。残処理：':'')+'顧客への復旧見込みの訂正説明が未完了です。事実・未確認事項・次回報告時刻を整理してください。';
  if(g.recovered){
   if(!g.facts.summary)return '売上取込は正常終了。後続の売上集計の確認が残っています。';
   if(!g.facts.count)return '売上取込・後続とも正常終了。SQLで処理件数の確認が残っています。';
@@ -619,9 +681,15 @@ export function restoreGame(raw){
   }
   if(!g.meetingAssessment||!Number.isFinite(g.meetingAssessment.trust)||!Number.isFinite(g.meetingAssessment.mental)||g.meetingAssessment.trust<0||g.meetingAssessment.mental<0)return null;
   changeTrust(g,0);
+  if(data.customerPromise===undefined&&g.correctionNeeded&&!g.ended){
+   const evidence=g.timeline.findLast(m=>m.channel==='customer'&&m.sender==='あなた'&&m.text==='電話で5分以内の復旧を約束しました。');
+   if(evidence)g.customerPromise={madeAt:evidence.time,promisedAt:evidence.time+5,recoveredAt:g.recoveredAt,correctedAt:null,overdue:false,managerRequired:false,explanationCompleted:false,completedAt:null,nextReportAt:null,nextReportSent:false,nextReminder:false,used:[]};
+  }
+  if(!Array.isArray(g.customerPromiseHistory))g.customerPromiseHistory=[];
+  if(g.customerPromise){const p=g.customerPromise;if(!Number.isFinite(p.madeAt)||!Number.isFinite(p.promisedAt)||!Array.isArray(p.used))return null;p.recoveredAt=g.recoveredAt;}
   // Both histories must point at the same messages when a colleague takes over.
   g.messages={internal:g.timeline.filter(m=>m.channel==='internal'),customer:g.timeline.filter(m=>m.channel==='customer')};
-  endForDeadline(g);return g;
+  endForDeadline(g);checkPromise(g);return g;
  }catch{return null;}
 }
 
@@ -686,6 +754,7 @@ export function finishMeeting(g){
   push(g,'internal','鬼塚｜リーダー','【個別】お前、何がなんだかわからないままやってるから、簡単な報告一つもできねえんだぞ');
   push(g,'internal','鬼塚｜リーダー','【個別】今後障害起きたら全部対応しろよ');
  }
+ checkPromise(g);
 }
 
 function beginManagerEnding(g,operation,impact){
@@ -721,7 +790,7 @@ export function deadlineText(g){
  return remaining>=0?'05:00まであと'+Math.floor(remaining/60)+'時間'+remaining%60+'分':'05:00の復旧期限を超過';
 }
 function maybeSuccess(g){
- if(g.ended||g.dispatch||g.managerEnding||!recoveredInTime(g)||g.secondary||!g.facts.summary||!g.facts.count||!g.impactReviewed||!g.internalReported||!g.customerCompleted||!g.handoverDone)return;
+ if(g.ended||g.dispatch||g.managerEnding||!recoveredInTime(g)||g.secondary||!g.facts.summary||!g.facts.count||!g.impactReviewed||!g.internalReported||!g.customerCompleted||!g.handoverDone||promisePending(g))return;
  g.cleanupCompletedAt=g.minutes;g.successEnding={phase:'sequence'};g.call=false;g.callReason=null;
  finish(g,'END：通常出勤');g.endingStart=g.timeline.length;g.endingVisible=g.endingStart;
  const transition=g.minutes<360?'数時間後――':g.minutes<480?'まもなく朝――':'その朝――';
