@@ -70,6 +70,7 @@ async function playReplies(showCustomerReply=false){
   }
   if(!['onsite','meeting','manager-typing','manager-blackout','success-blackout','success-morning','success-end'].includes(message.presentation)&&!g.callReason&&message.channel==='internal'&&message.sender!=='あなた')chatSound();
   $('typing').hidden=message.presentation!=='manager-typing';if(message.presentation==='manager-typing')$('typing-name').textContent='一条（PM）が入力中…';visible=rendered+1;render();requestAnimationFrame(scrollLatest);
+  if(message.presentation==='meeting-invite')await delay(3000);
   if(message.presentation?.startsWith('manager-')||message.presentation?.startsWith('success-')){g.endingVisible=visible;saveProgress();}
   if(message.presentation==='onsite'){g.endingVisible=visible;saveProgress();if(message.text==='〜完〜')await delay(1200);}
  }}finally{busy=false;last=Date.now();$('typing').hidden=true;if(showCustomerReply&&!meetingActive(g)&&!g.ended&&!g.callReason&&!g.dispatch)openCustomerMail();render();resizeComposer();}

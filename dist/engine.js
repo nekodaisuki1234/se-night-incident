@@ -25,7 +25,7 @@ function endForDeadline(g){
  g.deadlineEnded=true;g.call=false;g.callReason=null;if(g.meeting)g.meeting.phase='done';
  finish(g,'GAME OVER：復旧期限超過');
  push(g,'internal','システム','05:00の復旧期限を超過しました。現地対応を終了します。');
- push(g,'internal','鬼塚｜リーダー','顛末書を提出してくれ。これから1ヶ月、なぜなぜ分析だ。');
+ for(const text of ['手際が悪すぎる','お前1人に対応させた俺のミスだ','もういい、今日は帰って通常業務に備えろ'])push(g,'internal','鬼塚｜リーダー',text);
  event(g,'復旧期限05:00を超過。顛末書提出・1ヶ月のなぜなぜ分析');return true;
 }
 function act(g,minutes=10){g.actions++;g.minutes+=minutes;return true;}
@@ -581,6 +581,8 @@ function maybeMeeting(g){
  g.meeting={phase:'opening',reason,claim:false,evaluated:false,takenOver:false,start:g.timeline.length};
  event(g,'部長から社内Zoomの招集：'+reason);
  push(g,'internal','森｜監視',reason+'、部長から社内報告会議の招集が来ました。現地対応を一時止めて参加してください。');
+ push(g,'internal','鬼塚｜リーダー','部長へ報告だ。ここに入れ。\nZoom ミーティングID：000 1012 0117');
+ Object.assign(g.timeline.at(-1),{presentation:'meeting-invite'});
  meetingLine(g,'システム','社内Zoomに接続しました。参加者：あなた・鬼塚・部長。カメラ・音声は使用しません。');
  meetingLine(g,'部長','後続への影響が続いていると聞いています。確認できている影響と、復旧見込み、次の対応を説明してください。');
  meetingLine(g,'鬼塚｜リーダー','承知しました。詳細は現地の担当から説明させます。……説明して。');
