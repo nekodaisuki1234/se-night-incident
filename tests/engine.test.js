@@ -74,7 +74,7 @@ test('安全な再確認では田山の一般論も鬼塚の誤操作叱責も�
  assert.equal(tayama(g).length,n);assert.equal(g.mistakes,0);assert.equal(g.trust,100);assert.equal(g.mental,100);assert.equal(g.assistCount,undefined);
 });
 test('別ジョブ誤停止と正しい対象の無承認実行を言い分ける',()=>{
- const g=game();execute(g,'job stop ACCOUNT_SYNC');assert.match(tayama(g).at(-1),/チャットでは確認/);assert.ok(g.messages.internal.some(m=>m.sender==='鬼塚｜リーダー'&&m.text.includes('正常稼働中の別系統')));assert.equal(g.dispatch.kind,'wrong-job');
+ const g=game();execute(g,'job stop ACCOUNT_SYNC');assert.match(tayama(g).at(-1),/チャットでは確認/);assert.ok(g.messages.internal.some(m=>m.sender==='鬼塚｜リーダー'&&m.text.includes('普段トロいのに')));assert.equal(g.dispatch.kind,'wrong-job');
  const h=game();prepare(h);execute(h,'job rerun SALES_IMPORT');assert.equal(h.recovered,true);assert.equal(h.dispatch,null);assert.match(tayama(h).at(-1),/実施判断の経緯/);assert.doesNotMatch(h.messages.internal.findLast(m=>m.sender==='鬼塚｜リーダー').text,/別系統|対象が違/);
 });
 test('田山への実際の相談だけで責任を返し、連続する言い換えは省く',()=>{
@@ -119,7 +119,7 @@ test('出動確定後の全操作と連打を拒否し復旧や承認に進め�
 });
 test('出動中の保存再開でも到着までの残り時間と理由を保ち一度だけ終了',()=>{
  let g=game();execute(g,'job stop ACCOUNT_SYNC');tick(g,1);const history=JSON.stringify(g.timeline),reason=g.dispatch.reason;g=restoreGame(serializeGame(g));assert.equal(JSON.stringify(g.timeline),history);assert.equal(g.dispatch.remaining,2);assert.equal(g.dispatch.reason,reason);assert.equal(g.ended,false);tick(g,1);assert.equal(g.ended,false);tick(g,1);assert.equal(g.result,'対応交代');
- const arrival=g.timeline.findIndex(m=>m.text==='タクシーが現場に到着しました');assert.ok(arrival>=0);assert.equal(g.timeline[arrival+1].text,'……席、代わって。');
+ const arrival=g.timeline.findIndex(m=>m.text==='タクシーが現場に到着しました');assert.ok(arrival>=0);assert.equal(g.timeline[arrival+1].text,'お前は一体何ならできるんだ？');
  g=restoreGame(serializeGame(g));tick(g,100);answerCall(g,'explain');assert.equal(g.timeline.filter(m=>m.text==='タクシーが現場に到着しました').length,1);assert.equal(g.events.filter(e=>e.text==='対応交代').length,1);assert.equal(g.dispatch.phase,'arrived');
 });
 test('旧セーブはそのまま再開でき過去の無断実行は次の危険判断に使う',()=>{
@@ -132,4 +132,23 @@ test('田山は最後まで遠隔に留まり出動時も台詞が重複しな�
 });
 test('顧客の指摘を社内へ共有してから遠隔の田山が評論する',()=>{
  const g=game();answerCall(g,'promise');const share=g.timeline.findIndex(m=>m.channel==='internal'&&m.sender==='あなた'&&m.text.includes('根拠を問われ'));const critic=g.timeline.findIndex(m=>m.sender==='田山｜ベテラン');assert.ok(share>=0&&critic>share);assert.ok(g.timeline.filter(m=>m.channel==='internal').every(m=>!m.sender.startsWith('高橋')));
+});
+
+test('別ジョブ専用台詞は誤停止だけに一度出し長い叱責を重ねない',()=>{
+ const text='普段トロいのに、こういう時には慎重さに欠くのはなんでなんだ？';
+ const g=game();execute(g,'job stop ACCOUNT_SYNC');execute(g,'job stop ACCOUNT_SYNC');assert.equal(g.timeline.filter(m=>m.text===text).length,1);assert.equal(g.trust,78);assert.equal(g.mental,80);assert.equal(g.dispatch.kind,'wrong-job');assert.ok(!g.timeline.some(m=>m.text.includes('待て。なんでACCOUNT_SYNC')));
+ for(const cmd of ['job rerun SALES_IMPORT','tail -n 30 /logs/SALES_IMPORT.log']){const h=game();execute(h,cmd);assert.ok(!h.timeline.some(m=>m.text===text));}
+});
+test('到着で終了を確定し対面の台詞と沈黙だけで専用エンドを構成する',()=>{
+ const g=game();execute(g,'job stop ACCOUNT_SYNC');tick(g,3);assert.equal(g.ended,true);assert.equal(g.result,'対応交代');assert.deepEqual(nextChoices(g),[]);
+ const scene=g.timeline.slice(g.endingStart);assert.deepEqual(scene.map(m=>m.text),['タクシーが現場に到着しました','お前は一体何ならできるんだ？','……ライブラリアンさえやってくれたらいいから','〜完〜']);assert.ok(scene.every(m=>m.presentation==='onsite'&&!m.sender.startsWith('田山')));assert.ok(scene[2].pauseBefore>=1000);
+ const frozen=serializeGame(g);execute(g,'job rerun ACCOUNT_SYNC');send(g,'customer','復旧','complete');assert.equal(serializeGame(g),frozen);
+});
+test('エンド途中の表示位置と使用済み台詞を保存し重複せず再開できる',()=>{
+ let g=game();execute(g,'job stop ACCOUNT_SYNC');tick(g,3);g.endingVisible=g.endingStart+2;g=restoreGame(serializeGame(g));assert.equal(g.endingVisible,g.endingStart+2);const history=JSON.stringify(g.timeline);tick(g,10);assert.equal(JSON.stringify(g.timeline),history);assert.equal(g.events.filter(e=>e.text==='対応交代').length,1);
+ const h=game();assert.equal(h.dispatch,null);assert.equal(h.ended,false);assert.equal(h.endingVisible,undefined);assert.equal(h.tayamaUsed,undefined);execute(h,'job stop ACCOUNT_SYNC');assert.equal(h.timeline.filter(m=>m.text.includes('普段トロいのに')).length,1);
+});
+test('通常復旧と時間超過エンドに専用対面台詞は出ない',()=>{
+ const g=game();prepare(g);requestApproval(g,'SALES_IMPORT');execute(g,'job rerun SALES_IMPORT');verify(g);send(g,'customer','復旧報告','complete');assert.equal(g.result,'模範復旧');assert.ok(!g.timeline.some(m=>m.presentation==='onsite'||m.text.includes('ライブラリアン')));
+ const h=game();tick(h,270);assert.equal(h.result,'対応交代');assert.ok(!h.timeline.some(m=>m.presentation==='onsite'||m.text.includes('ライブラリアン')));
 });
