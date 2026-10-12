@@ -157,11 +157,16 @@ function baseChoices(g){
 export function chooseAction(g,choice){
  if(!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
  const before=g.timeline.length;
+ const reportState=progressText(g);
+ const repeatedReport=choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id)&&g.lastPlayerReport===reportState;
+ const redundantCheck=choice.command==='job status SALES_SUMMARY'&&g.facts.summary;
  if(choice.type==='command')send(g,'internal',`「${choice.command}」を入力しました。`);
  else if(choice.type==='approval')requestApproval(g,choice.target);
  else send(g,choice.channel,choice.text,choice.id);
- if(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー'))push(g,'internal','鬼塚｜リーダー',leaderFeedback(g,choice));
+ if(['request-file','escalate-file','wait-vendor','resend-file','release-lock','critic-approval'].includes(choice.id)||!g.timeline.slice(before).some(m=>m.sender==='鬼塚｜リーダー'))push(g,'internal','鬼塚｜リーダー',variedFeedback(g,choice));
+ if(choice.channel==='customer'&&['file-report','progress-report','initial'].includes(choice.id))g.lastPlayerReport=reportState;
  if(!g.ended)criticComment(g,choice);
+ if(!g.ended&&(repeatedReport||redundantCheck||['wait-vendor','critic-approval','patch-file','complete'].includes(choice.id)))colleagueAdvance(g,choice,repeatedReport);
 }
 function leaderFeedback(g,choice){
  const c=choice.command||'';
@@ -176,7 +181,8 @@ function leaderFeedback(g,choice){
  if(c==='job status SALES_SUMMARY'&&g.facts.count)return '確認は全部終わったんだな。それなら、いつ対応を終えられる？';
  if(g.recovered)return '戻ったんだな？ 顧客に大丈夫だと言えるのか。あとから違いましたじゃ困るぞ。';
  if(choice.channel==='customer')return '顧客にはそう説明したんだな。で、実際のところ間に合うのか？';
- if(c.startsWith('tail')||c.startsWith('ls'))return '結果は見た。で、どうすんだ？ 俺が聞きたいのは、このあとどうするかだ。';
+ if(c.startsWith('tail'))return 'エラーが出てるのは分かった。で、どうすんだ？ 原因の説明だけで朝を迎える気か。';
+ if(c.startsWith('ls'))return '今日の分がないってことか？ それで、お前は次に何をするつもりなんだ？';
  if(c.startsWith('check')||c.includes('batch_history'))return '確認したのは分かった。それで、やって大丈夫って言えるのか？';
  return '報告は見た。で、どうすんだ？ お前の判断を聞いてるんだが。';
 }
@@ -239,4 +245,27 @@ function customerReply(g){
  if(g.approved.has('SALES_IMPORT'))return '検証と再実行承認まで完了、承知しました。実行後の結果を報告してください。';
  if(g.file)return 'ファイル到着、承知しました。復旧作業の結果を報告してください。';
  return '現在の確認状況、承知しました。状況が変わり次第、続報をお願いします。';
+}
+
+function variedFeedback(g,choice){
+ const text=leaderFeedback(g,choice);
+ const last=g.timeline.findLast(m=>m.sender==='鬼塚｜リーダー')?.text;
+ if(last!==text)return text;
+ const alternatives=['その話は聞いた。お前自身はどうするつもりなんだ？','説明は分かったから、判断を聞かせろ。まだ待つのか？','さっきから状況が動いてないぞ。いつまで同じ話をしてるんだ？'];
+ return alternatives[(g.actions||0)%alternatives.length];
+}
+function colleagueAdvance(g,choice,repeatedReport){
+ const next=baseChoices(g)[0];if(!next)return;
+ const reason=repeatedReport?'同じ報告を繰り返してどうする。状況が変わってないだろ。':choice.id==='critic-approval'?'田山さんに判断を預けて終わりか？ お前が担当だろ。':choice.id==='wait-vendor'?'待ってるだけじゃ朝になるぞ。森、そっちで進めてくれ。':choice.id==='complete'?'確認も終わってないのに完了って言ったのか。森、残りを引き取ってくれ。':choice.id==='patch-file'?'その場しのぎで増やした手間、誰が片付けるんだ。森、頼む。':'もう確認したことを繰り返してるぞ。森、先へ進めてくれ。';
+ push(g,'internal','鬼塚｜リーダー',reason);
+ g.assistCount=(g.assistCount||0)+1;g.mistakes++;g.trust=Math.max(0,g.trust-6);
+ event(g,'停滞した対応を森が引き取り、次の作業を代行（信用 −6）');
+ push(g,'internal','森｜監視','こちらで次の対応を引き取ります。'+(next.type==='approval'?'対象と確認結果を整理して、鬼塚さんに承認を取ります。':next.type==='command'?'「'+next.command+'」を実施します。':next.channel==='customer'?'確認結果をまとめて顧客へメールします。':next.text));
+ const from=g.timeline.length;
+ if(next.type==='command')execute(g,next.command);
+ else if(next.type==='approval')requestApproval(g,next.target);
+ else send(g,next.channel,next.text,next.id);
+ // Preserve the actual actor, including the separate customer contact history.
+ for(const message of g.timeline.slice(from))if(message.sender==='あなた')message.sender='森｜監視';
+ if(!g.ended)push(g,'internal','森｜監視','ここまで私のほうで対応しました。続きの判断をお願いします。');
 }
