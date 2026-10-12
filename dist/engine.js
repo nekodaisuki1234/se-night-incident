@@ -12,18 +12,18 @@ export function createGame() {
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:false,recovered:false,
  secondary:false,approved:new Set(),reported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
- messages:{internal:[],customer:[]},events:[],unread:{internal:0,customer:0}};
+ messages:{internal:[],customer:[]},timeline:[],events:[],unread:{internal:0,customer:0}};
 }
-function push(g,channel,sender,text){g.messages[channel].push({sender,text,time:g.minutes});if(sender!=='あなた')g.unread[channel]++;}
+function push(g,channel,sender,text){const message={sender,text,time:g.minutes,channel};g.timeline.push(message);if(g.messages[channel]){g.messages[channel].push(message);if(sender!=='あなた')g.unread[channel]++;}}
 function event(g,text){g.events.push({time:g.minutes,text});}
 function progress(g){g.techIdle=0;g.techLevel=0;}
 function fresh(g,key){if(!g.facts[key]){g.facts[key]=true;progress(g);}}
-function emit(g,text,kind='info'){g.terminal.push({text,kind});return text;}
+function emit(g,text,kind='info'){g.terminal.push({text,kind});push(g,'operations','操作結果',text);return text;}
 function act(g){g.actions++;g.minutes++;}
 export function start(g){g.started=true;push(g,'internal','森｜監視','01:17 SALES_IMPORTがRC=12。ログは /logs/SALES_IMPORT.log。現地対応お願いします。');push(g,'internal','佐伯｜リーダー','まず原因と影響を確認してください。状態を変える操作は対象を添えて私に確認を。');push(g,'customer','高橋｜顧客','売上取込の異常終了を検知しました。現状と朝の業務への影響、次回報告予定を回答してください。');event(g,'現地対応開始');}
 function penalty(g,text){g.mistakes++;g.trust=Math.max(0,g.trust-22);g.procedure=Math.max(0,g.procedure-20);event(g,text);push(g,'internal','佐伯｜リーダー',text);}
 export function requestApproval(g,target){
- if(g.ended)return;act(g);
+ if(g.ended)return;act(g);push(g,'internal','あなた',`${target}の再実行・再開を確認します。`);
  if(target==='SALES_IMPORT'){
   if(!(g.file&&g.facts.checked&&g.facts.history)){push(g,'internal','佐伯｜リーダー','再実行の判断材料が足りません。当日ファイルの検証と当日処理履歴を確認してください。');return;}
   if(g.recovered){push(g,'internal','佐伯｜リーダー','そのジョブは処理済みです。再実行する必要はありません。');return;}
@@ -33,7 +33,7 @@ export function requestApproval(g,target){
  if(!g.approved.has(target))progress(g);g.approved.add(target);event(g,`${target}の再実行承認`);push(g,'internal','佐伯｜リーダー',`${target}の再実行を承認します。対象を取り違えず、実行後の状態を確認してください。`);
 }
 export function execute(g,raw){
- if(g.ended||!g.started)return;const input=raw.trim();if(!input)return;act(g);g.terminal.push({text:'$ '+input,kind:'command'});
+ if(g.ended||!g.started)return;const input=raw.trim();if(!input)return;act(g);push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
  const c=input.replace(/\s+/g,' ').replace(/;$/,'').trim();
  if(c==='help')return emit(g,'対応コマンドは候補ボタンから選択できます。入力欄で編集して実行してください。');
  if(/^job status(?: SALES_IMPORT)?$/i.test(c)){fresh(g,'status');return emit(g,`SALES_IMPORT  ${g.recovered?'NORMAL RC=0':'ABEND RC=12'}\nSALES_SUMMARY ${g.recovered?'NORMAL RC=0':'WAITING'}\nACCOUNT_SYNC  ${g.secondary?'STOPPED（追加障害）':'RUNNING'}`);}
@@ -84,9 +84,17 @@ export class RuleBasedProvider {
  }
 }
 export function send(g,channel,text,id=null,provider=new RuleBasedProvider()){
- if(g.ended||!text.trim())return;act(g);push(g,channel,'あなた',text.trim());
+ if(g.ended||!text.trim())return;if(!id){const command=parseCommandReport(text);if(command){execute(g,command);return;}}act(g);push(g,channel,'あなた',text.trim());
  if(!id){const c=text.replace(/\s+/g,'');if(channel==='internal'&&/^(当日ファイルの確認を連携元にお願いします|連携元に当日ファイルの確認をお願いします)[。！!]?$/u.test(c))id='request-file';}
  const reply=provider.respond(g,channel,text,id);push(g,channel,channel==='internal'?'佐伯｜リーダー':'高橋｜顧客',reply);
+}
+export function parseCommandReport(raw){
+ const text=raw.trim();
+ if(/(?:入力|実行)(?:していない|してません|していません|しません|しない|予定|したい)/u.test(text))return null;
+ const quoted=text.match(/^[「『"]([\s\S]+)[」』"](?:のコマンド|のSQL)?を(?:入力|実行)しました[。.!！]?$/u);
+ const plain=text.match(/^([\s\S]+?)(?:のコマンド|のSQL)?を(?:入力|実行)しました[。.!！]?$/u);
+ const command=(quoted?.[1]||plain?.[1]||text).trim();
+ return /^(?:job\s|tail\s|cat\s|ls\s|check\s|SELECT\s|help$)/i.test(command)?command:null;
 }
 function finish(g,title){g.ended=true;g.result=title;event(g,title);}
 export function tick(g,seconds){
