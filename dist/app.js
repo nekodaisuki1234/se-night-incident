@@ -1,5 +1,5 @@
-import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame,meetingActive,finishMeeting,advanceIncidentTime,deadlineText,resultAssessment} from './engine.js';
-const $=id=>document.getElementById(id);let g=createGame({scenario:'random'}),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null,meetingChoiceKey='';
+import {createGame,start,tick,answerCall,time,nextChoices,chooseAction,messageSurface,objectiveText,serializeGame,restoreGame,meetingActive,finishMeeting,advanceIncidentTime,deadlineText,resultAssessment,actionCatalog,knownInformation,inspectionDone,informationRecheck,canInformationRecheck,actionLabel,communicationChoice,pendingCommunications} from './engine.js';
+const $=id=>document.getElementById(id);let g=createGame({scenario:'random'}),paused=false,sound=true,audio=null,last=Date.now(),rung=false,rendered=0,visible=0,busy=false,choiceKey='',customerUnread=0,resultRequested=false,pressedChoice=null,meetingChoiceKey='',choicePanel='work';
 function item(tag,text,cls){const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;}
 function ring(){if(!sound||!audio)return;try{const now=audio.currentTime;for(let i=0;i<4;i++){const o=audio.createOscillator(),v=audio.createGain();o.frequency.value=i%2?660:880;v.gain.setValueAtTime(0,now+i*.2);v.gain.linearRampToValueAtTime(.04,now+i*.2+.02);v.gain.linearRampToValueAtTime(0,now+i*.2+.15);o.connect(v);v.connect(audio.destination);o.start(now+i*.2);o.stop(now+i*.2+.16);}}catch{}}
 const SAVE_KEY='se-night-incident-progress-v1';
@@ -32,7 +32,52 @@ function render(){
  if(!meetingActive(g)&&g.call&&(!g.ended||g.callReason)&&!$('approval').open&&!paused&&!busy&&!$('customer-mail').open){$('call-script').textContent=g.callReason||'影響件数は何件ですか？ 復旧見込みはいつですか？ 朝の業務に間に合うんですか？';if(!$('call').open)$('call').showModal();if(!rung){ring();rung=true;}}else if(!g.call)rung=false;
 }
 function resizeComposer(){document.documentElement.style.setProperty('--composer-height',`${Math.ceil(document.querySelector('.composer').getBoundingClientRect().height)}px`);}
-function renderChoices(){if(meetingActive(g)){renderMeeting();return;}if(pressedChoice)return;if(busy){choiceKey='';for(const b of $('choices').children)b.disabled=true;return;}const readyForResult=g.ended&&!busy&&!g.callReason&&visible===g.timeline.length;const choices=nextChoices(g),key=JSON.stringify(choices)+busy+(g.dispatch?.phase||'')+readyForResult;if(key===choiceKey)return;choiceKey=key;document.querySelector('.choice-heading span').textContent=g.ended?'対応終了':'次の対応を選ぶ';document.querySelector('.choice-heading small').textContent=g.ended?(readyForResult?'読み終えたら結果へ':'最後の会話をご覧ください'):'3つの選択肢から回答';const buttons=choices.map((choice,i)=>{const b=item('button','','choice');b.type='button';b.disabled=busy;b.append(item('span',String(i+1),'choice-number'),item('span',(choice.channel==='customer'?'✉ 顧客メール：':'')+choice.label,'choice-label'));b.onpointerdown=()=>{pressedChoice=b;};b.onpointercancel=()=>{pressedChoice=null;renderChoices();};b.onclick=()=>{pressedChoice=null;if(busy){renderChoices();return;}chooseAction(g,choice);saveProgress();playReplies(choice.channel==='customer');};return b;});$('choices').replaceChildren(...buttons);if(readyForResult&&!g.managerEnding&&!g.successEnding){const viewResult=item('button','結果を見る →','primary wide');viewResult.onclick=()=>{resultRequested=true;render();};$('choices').append(viewResult);}if(g.dispatch){const status=item('p',g.dispatch.phase==='travelling'?'🚕 鬼塚が移動中 · 操作できません':'担当交代 · 対応終了','tag');status.setAttribute('role','status');$('choices').append(status);}resizeComposer();}
+function displayedChoices(){
+ const all=actionCatalog(g);
+ if(all.some(c=>['meeting','correction','history-plan'].includes(c.type))||g.infraMenu)return all;
+ if(choicePanel==='reports')return all.filter(communicationChoice);
+ return all.filter(c=>!inspectionDone(g,c)&&(!communicationChoice(c)||['initial','internal-report','complete','internal-complete','progress-report'].includes(c.id)));
+}
+function renderChoices(){
+ const unavailable=busy||!g.started||g.ended||!!g.dispatch||meetingActive(g);
+ $('open-information').disabled=unavailable;$('open-reports').disabled=unavailable;
+ $('pending-communications').textContent=pendingCommunications(g);
+ if(meetingActive(g)){choicePanel='work';renderMeeting();return;}
+ if(pressedChoice)return;
+ if(busy){choiceKey='';for(const b of $('choices').children)b.disabled=true;return;}
+ if(g.ended||g.dispatch)choicePanel='work';
+ const readyForResult=g.ended&&!busy&&!g.callReason&&visible===g.timeline.length;
+ const choices=displayedChoices(),catalogKey=JSON.stringify(actionCatalog(g)),key=JSON.stringify(choices)+choicePanel+(g.dispatch?.phase||'')+readyForResult;
+ if(key===choiceKey)return;choiceKey=key;
+ document.querySelector('.choice-heading span').textContent=g.ended?'対応終了':choicePanel==='reports'?'報告／相談':'次の対応を選ぶ';
+ document.querySelector('.choice-heading small').textContent=g.ended?(readyForResult?'読み終えたら結果へ':'最後の会話をご覧ください'):'選ぶと作業・連絡を実施';
+ $('back-to-work').hidden=choicePanel!=='reports';
+ const buttons=choices.map((choice,i)=>{
+  const b=item('button','','choice');b.type='button';b.append(item('span',String(i+1),'choice-number'),item('span',(choice.channel==='customer'?'✉ 顧客メール：':'')+actionLabel(g,choice),'choice-label'));
+  b.onpointerdown=()=>{pressedChoice=b;};b.onpointercancel=()=>{pressedChoice=null;renderChoices();};
+  b.onclick=()=>{pressedChoice=null;if(busy||JSON.stringify(actionCatalog(g))!==catalogKey){renderChoices();return;}choicePanel='work';chooseAction(g,choice);saveProgress();playReplies(choice.channel==='customer');};return b;
+ });
+ $('choices').replaceChildren(...buttons);
+ if(!choices.length&&!g.ended&&!g.dispatch)$('choices').append(item('p','報告／相談から連絡・承認依頼を選べます。確認済みの結果は「確認済み情報」へ。'));
+ if(readyForResult&&!g.managerEnding&&!g.successEnding){const b=item('button','結果を見る →','primary wide');b.onclick=()=>{resultRequested=true;render();};$('choices').append(b);}
+ if(g.dispatch)$('choices').append(item('p',g.dispatch.phase==='travelling'?'🚕 鬼塚が移動中 · 操作できません':'担当交代 · 対応終了','tag'));
+ resizeComposer();
+}
+$('open-reports').onclick=()=>{if(busy||g.ended||g.dispatch||meetingActive(g))return;choicePanel='reports';choiceKey='';renderChoices();};
+$('back-to-work').onclick=()=>{choicePanel='work';choiceKey='';renderChoices();};
+function renderInformation(){
+ const rows=knownInformation(g);$('information-list').replaceChildren();
+ if(!rows.length)$('information-list').append(item('p','まだ保存された確認結果はありません。過去のチャット履歴も参照できます。'));
+ for(const o of rows.slice().reverse()){
+  const card=item('article','','information-card');card.append(item('b',o.target),item('small',time({minutes:o.at})+' 取得 · '+(o.stale?'更新前の情報':'取得後の関連変化なし')),item('pre',o.text));
+  const newest=!rows.some(n=>n.index>o.index&&n.key===o.key);
+  if(newest){const b=item('button',o.stale?'現在の状態を再確認する（実行）':'同じ条件で再実行する','text-button');b.disabled=!canInformationRecheck(g,o.index);b.append(item('small',b.disabled?'関連する変化または方針整理後に確認してください':'作業として時間が経過します'));const stamp=JSON.stringify([g.actions,g.minutes,g.observations.length]);b.onclick=()=>{if(busy||stamp!==JSON.stringify([g.actions,g.minutes,g.observations.length]))return;if(informationRecheck(g,o.index)){$('information').close();saveProgress();playReplies();}};card.append(b);}
+  $('information-list').append(card);
+ }
+}
+$('open-information').onclick=()=>{if(busy||g.ended||g.dispatch||meetingActive(g))return;renderInformation();$('information').showModal();};
+$('close-information').onclick=()=>{$('information').close();last=Date.now();};
+$('information').addEventListener('cancel',()=>{last=Date.now();});
 document.addEventListener('pointerup',()=>{setTimeout(()=>{pressedChoice=null;renderChoices();},0);});
 $('start').onclick=()=>{try{audio=new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch{}$('intro').close();start(g);saveProgress();last=Date.now();playReplies();resizeComposer();};
 document.querySelectorAll('[data-call]').forEach(b=>b.onclick=()=>{if(busy)return;answerCall(g,b.dataset.call);saveProgress();$('call').close();playReplies(true);});
@@ -52,7 +97,7 @@ new ResizeObserver(resizeComposer).observe(document.querySelector('.composer'));
 for(const id of ['intro','call','result','paused','meeting'])$(id).addEventListener('cancel',e=>e.preventDefault());
 document.addEventListener('visibilitychange',()=>{saveProgress();last=Date.now();});
 window.addEventListener('pagehide',saveProgress);
-setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!$('intro').open){renderClock();}if(!document.hidden&&!paused&&!busy&&!meetingActive(g)&&!pressedChoice&&!$('call').open&&!$('intro').open&&!$('approval').open&&!$('customer-mail').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
+setInterval(()=>{const now=Date.now(),seconds=Math.min(2,(now-last)/1000);last=now;if(!document.hidden&&!paused&&!$('intro').open){renderClock();}if(!document.hidden&&!paused&&!busy&&!meetingActive(g)&&!pressedChoice&&!$('call').open&&!$('intro').open&&!$('approval').open&&!$('customer-mail').open&&!$('information').open){tick(g,seconds);saveProgress();if(g.started){if(rendered<g.timeline.length)playReplies();else render();}}},1000);
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function playReplies(showCustomerReply=false){
  if(busy)return;busy=true;renderChoices();

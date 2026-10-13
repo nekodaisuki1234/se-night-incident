@@ -31,7 +31,7 @@ test('行動の返答を表示中は時計を止め、要求を返答後に表�
  await h.drain();assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent==='現在の状況と次の対応を報告する'));assert.ok(h.el('choices').children.every(b=>!b.disabled));assert.equal(h.run('visible'),h.run('g.timeline.length'));
 });
 test('タップ中はボタンを差し替えず失効した選択から別操作を実行しない',async()=>{
- const h=ui();const buttons=h.el('choices').children;const dangerous=buttons.find(b=>b.children[1].textContent.includes('SALES_IMPORTを再実行'));assert.ok(dangerous);dangerous.onpointerdown();h.run("g.internalRequest={id:99,reason:'timer',at:g.clock};renderChoices();");assert.equal(h.el('choices').children,buttons);const actions=h.run('g.actions');dangerous.onclick();await h.drain();assert.equal(h.run('g.actions'),actions);assert.equal(h.run('g.dispatch'),null);assert.equal(h.run('g.mistakes'),0);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent==='現在の状況と次の対応を報告する'));
+ const h=ui();const buttons=h.el('choices').children;const dangerous=buttons.find(b=>b.children[1].textContent.includes('SALES_IMPORTを全件・最初から再実行'));assert.ok(dangerous);dangerous.onpointerdown();h.run("g.internalRequest={id:99,reason:'timer',at:g.clock};renderChoices();");assert.equal(h.el('choices').children,buttons);const actions=h.run('g.actions');dangerous.onclick();await h.drain();assert.equal(h.run('g.actions'),actions);assert.equal(h.run('g.dispatch'),null);assert.equal(h.run('g.mistakes'),0);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent==='現在の状況と次の対応を報告する'));
 });
 test('着信ダイアログ中とタップ中は報告遅延の時計を進めない',()=>{
  const h=ui();for(const setup of ["$('call').showModal();", "$('call').close();pressedChoice=$('choices').children[0];"]){h.run(setup);const clock=h.run('g.clock');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.run('g.clock'),clock);}
@@ -42,7 +42,7 @@ test('期限直前の調査は一度だけ実行し古い催促を後から追�
 
 test('Zoom画面は操作結果の表示後に開き、通常三択を閉じ会議終了後に戻す',async()=>{
  const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");assert.equal(h.el('meeting').open,false);await h.drain();assert.equal(h.el('meeting').open,true);assert.equal(h.el('meeting-choices').children.length,3);assert.equal(h.el('choices').children.length,0);const clock=h.run('g.clock');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.run('g.clock'),clock);
- h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');assert.equal(h.el('meeting-log').children.at(-1).children[0].textContent,'あなた');await h.drain();h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.equal(h.el('choices').children.length,3);assert.equal(h.run('g.mismatchSeen'),true);
+ h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');assert.equal(h.el('meeting-log').children.at(-1).children[0].textContent,'あなた');await h.drain();h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.ok(h.el('choices').children.length>0);h.el('open-reports').onclick();assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('田山')));h.el('back-to-work').onclick();assert.equal(h.run('g.mismatchSeen'),true);
 });
 
 test('マネージャー入力中の後に暗転し結果ボタンを押すまで振り返りを表示しない',async()=>{
@@ -116,8 +116,8 @@ test('顧客への遅い撤回から訂正三択へ進み、材料提出は一�
 
 test('4回目のSQL後に方針三択を表示し、連打・再開でも方針整理を二重実行しない',async()=>{
  const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');for(let i=0;i<4;i++)execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");playReplies();");await h.drain();
- assert.equal(h.el('choices').children.length,3);const a=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('確認済みの事実と未確認事項を整理'));assert.ok(a);const at=h.run('g.minutes'),credit=h.run('g.trust');a.onclick();a.onclick();await h.drain();assert.equal(h.run('g.minutes'),at);assert.equal(h.run('g.trust'),credit);assert.equal(h.run('g.facts.files'),false);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('受信ファイルの一覧')));
- const saved=h.run('serializeGame(g)'),resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.historyReview.resolved'),true);assert.equal(resumed.run('g.trust'),credit);assert.equal(resumed.el('choices').children.length,3);
+ assert.equal(h.el('choices').children.length,3);const a=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('確認済みの事実と未確認事項を整理'));assert.ok(a);const at=h.run('g.minutes'),credit=h.run('g.trust');a.onclick();a.onclick();await h.drain();assert.equal(h.run('g.minutes'),at);assert.equal(h.run('g.trust'),credit);assert.equal(h.run('g.facts.files'),false);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('受信ファイル一覧')));
+ const saved=h.run('serializeGame(g)'),resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.historyReview.resolved'),true);assert.equal(resumed.run('g.trust'),credit);assert.ok(resumed.el('choices').children.length>0);
 });
 
 // Only the heading varies: exercise the real renderer, including restored saves.
@@ -136,4 +136,70 @@ test('scenario/variantのない旧セーブは従来のDBロック見出しを�
  const g=engine.createGame();engine.start(g);g.lockEncountered=true;
  const old=JSON.parse(engine.serializeGame(g));delete old.game.scenario;delete old.game.variant;
  const h=ui(JSON.stringify(old));assert.equal(h.el('state').textContent,'再実行失敗 · DBロック');
+});
+
+test('情報閲覧と報告メニュー開閉はゲーム状態を変更せず、閲覧中の催促も停止する',()=>{
+ const h=ui();h.run("execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");visible=g.timeline.length;render();");const before=h.run('serializeGame(g)');
+ for(let n=0;n<4;n++){h.el('open-information').onclick();h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.el('information').open,true);assert.ok(h.el('information-list').children.length);h.el('close-information').onclick();h.el('open-reports').onclick();h.el('back-to-work').onclick();}
+ assert.equal(h.run('serializeGame(g)'),before);
+});
+test('情報の実SQL再実行だけが10分経過と段階的停滞を発火し、4回後は再実行を無効化',async()=>{
+ const h=ui();h.run("execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");visible=g.timeline.length;render();");
+ for(let count=2;count<=4;count++){const at=h.run('g.minutes');h.el('open-information').onclick();const b=h.el('information-list').children[0].children.at(-1);assert.equal(b.disabled,false);b.onclick();b.onclick();await h.drain();assert.equal(h.run('g.minutes'),at+10);assert.equal(h.run('g.historyReview.count'),count);}
+ assert.equal(h.el('choices').children.length,3);h.el('choices').children[0].onclick();await h.drain();h.el('open-information').onclick();assert.equal(h.el('information-list').children[0].children.at(-1).disabled,true);
+});
+test('関連変化前の確認は作業候補から消え、再送後は過去の結果と未検証状態を維持する',()=>{
+ const h=ui();h.run("g.file=true;g.fileAt=80;execute(g,'check /data/inbox/sales_20261012.csv');visible=g.timeline.length;render();");
+ assert.equal(h.run("displayedChoices().some(c=>c.command==='check /data/inbox/sales_20261012.csv')"),false);
+ const old=h.run('g.observations.at(-1).text');h.run('g.fileAt=150;g.fileDamaged=true;g.facts.checked=false;render();');
+ h.el('open-information').onclick();assert.match(h.el('information-list').children[0].children[1].textContent,/更新前/);assert.equal(h.run('g.observations.at(-1).text'),old);assert.equal(h.run('g.facts.checked'),false);
+ const resumed=ui(h.run('serializeGame(g)'));assert.equal(resumed.run('knownInformation(g).at(-1).stale'),true);
+});
+test('旧セーブの存在しない結果を補完せず、新規プレイにも引き継がない',()=>{
+ const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');");const old=JSON.parse(h.run('serializeGame(g)'));delete old.game.observations;
+ const resumed=ui(JSON.stringify(old));resumed.el('open-information').onclick();assert.equal(resumed.run('knownInformation(g).length'),0);
+ h.run('restartGame()');assert.equal(h.run('g.observations.length'),0);
+});
+
+for(const scenario of ['missing','partial','notification','active-lock'])test('整理後のUIから '+scenario+' の調査・報告・承認・復旧・残処理を完走',async()=>{
+ const h=ui();h.run(`g=createGame({scenario:${JSON.stringify(scenario)}});start(g);visible=g.timeline.length;rendered=visible;choiceKey='';render();`);
+ async function pick(predicate){
+  if(h.run('g.call'))h.run("answerCall(g,'explain');visible=g.timeline.length;rendered=visible;render();");
+  if(h.run('meetingActive(g)')){while(h.run('g.meeting.phase')!=='closing'){h.run("chooseAction(g,nextChoices(g).find(c=>c.id==='meeting-good'));visible=g.timeline.length;rendered=visible;render();");}h.run('finishMeeting(g);visible=g.timeline.length;rendered=visible;render();');}
+  if(h.run('!!g.internalRequest')&&!predicate.includes('initial')&&!predicate.includes('internal-report')){await pick("c.id==='internal-report'");}
+  let i=h.run(`displayedChoices().findIndex(c=>${predicate})`);
+  if(i<0){h.el('open-reports').onclick();i=h.run(`displayedChoices().findIndex(c=>${predicate})`);}
+  assert.ok(i>=0,scenario+' missing '+predicate+' '+h.run('JSON.stringify(actionCatalog(g))'));
+  const b=h.el('choices').children[i];assert.ok(!b.disabled);b.onclick();await h.drain();
+ }
+ const command=c=>pick('c.command==='+JSON.stringify(c));
+ await pick("c.id==='initial'");await pick("c.id==='internal-report'");await command('tail -n 30 /logs/SALES_IMPORT.log');await command('ls -l /data/inbox');
+ if(scenario==='missing'){
+  await pick("c.id==='request-file'");await pick("c.id==='escalate-file'");await command('check /data/inbox/sales_20261012.csv');await pick("c.id==='resend-file'");await command('check /data/inbox/sales_20261012.csv');await command("SELECT * FROM batch_history WHERE business_date = '20261012';");await pick("c.type==='approval'");await command('job rerun SALES_IMPORT');await command("SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';");await pick("c.id==='release-lock'");
+ }else{
+  await command('check /data/inbox/sales_20261012.csv');await command("SELECT * FROM batch_history WHERE business_date = '20261012';");await command("SELECT COUNT(*) FROM sales WHERE business_date = '20261012';");await pick("c.id==='variant-plan'");
+  if(scenario==='active-lock'){await command("SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';");await pick("c.id==='variant-contact'");await pick("c.id==='variant-wait'");}
+ }
+ await pick("c.type==='approval'");await command(scenario==='partial'?'job resume SALES_IMPORT --from 625':scenario==='notification'?'job reconcile SALES_IMPORT --notify-only':'job rerun SALES_IMPORT');
+ assert.equal(h.run('g.recovered'),true);assert.ok(h.run('g.recoveredAt')<=300);
+ await command('job status SALES_SUMMARY');await command("SELECT COUNT(*) FROM sales WHERE business_date = '20261012';");await pick("c.id==='impact-review'");await pick("c.id==='internal-complete'");await pick("c.id==='complete'");await pick("c.id==='handover'");assert.equal(h.run('g.result'),'END：通常出勤');
+});
+
+test('関連する変化のみ再確認を有効化し、指示された二重確認は通常候補に残す',()=>{
+ const h=ui();h.run("execute(g,'ls -l /data/inbox');execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");visible=g.timeline.length;render();");
+ assert.equal(h.run("inspectionDone(g,{command:'ls -l /data/inbox'})"),true);
+ h.run('g.secondary=true;g.minutes+=10;');assert.equal(h.run("knownInformation(g).find(o=>o.key==='files').stale"),false);
+ h.run("instructHistoryCheck(g,{id:'double',kind:'double-check'});render();");assert.equal(h.run("displayedChoices().some(c=>c.verificationId==='double')"),true);
+ h.run('g.file=true;g.fileAt=g.minutes;');assert.equal(h.run("inspectionDone(g,{command:'ls -l /data/inbox'})"),false);
+});
+test('ロック解放後の実再確認は保持元の過去の結果を書き換えず現在の解放を返す',()=>{
+ for(const scenario of ['missing','active-lock']){
+ const h=ui();h.run(`g=createGame({scenario:${JSON.stringify(scenario)},setbacks:false});start(g);g.firstReportInstruction=false;g.lockEncountered=true;execute(g,\"SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT';\");g.lockReleased=true;`);
+ const old=h.run('g.observations[0].text');assert.match(old,/REPORT_EXPORT/);assert.equal(h.run('knownInformation(g)[0].stale'),true);
+ h.run('informationRecheck(g,0)');assert.equal(h.run('g.observations[0].text'),old);assert.match(h.run('g.observations.at(-1).text'),/現在のロック待ちはありません/);
+ }
+});
+test('整理後の危険な全件リランは表示内容どおりPMエンドに到達する',async()=>{
+ const h=ui();h.run("g=createGame({scenario:'partial'});start(g);visible=g.timeline.length;rendered=visible;render();");
+ const b=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('全件・最初から'));assert.ok(b);b.onclick();b.onclick();await h.drain();assert.equal(h.run('g.actions'),1);assert.equal(h.run('g.result'),'二次障害');assert.equal(h.el('manager-blackout').hidden,false);
 });

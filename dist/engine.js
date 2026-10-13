@@ -12,7 +12,7 @@ export function createGame({setbacks=true,scenario='missing',random=Math.random}
  if(scenario==='random')scenario=SCENARIOS[Math.min(3,Math.max(0,Math.floor(random()*4)))];
  if(!SCENARIOS.includes(scenario))scenario='missing';
  const variant=scenario==='missing'?null:{kind:scenario,rows:scenario==='partial'?624:scenario==='notification'?1248:0,countSeen:false,planKnown:false,contacted:false,holderDone:false};
- return {scenario,variant,historyReview:null,historyRevision:0,historyDirectives:[],customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {observations:[],scenario,variant,historyReview:null,historyRevision:0,historyDirectives:[],customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:!!variant,fileAt:variant?70:undefined,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,customerReport:null,cleanupCompletedAt:null,successEnding:null,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -185,7 +185,7 @@ function variantExecute(g,c,options={}){
  if(/^tail(?: -n \d+)? \/logs\/SALES_IMPORT\.log$/i.test(c)||c==='cat /logs/SALES_IMPORT.log'){fresh(g,'log');if(v.kind==='active-lock')g.lockEncountered=true;emit(g,v.kind==='partial'?'RC=32 PROCESS INTERRUPTED / CHECKPOINT=624 / PARTIAL COMMIT\n再実行前に処理履歴とDB件数を確認してください。':v.kind==='notification'?'RC=40 COMPLETION NOTIFY FAILED / COMMIT FINISHED\n取込履歴とDB件数、終了通知状態の照合が必要です。':'RC=28 LOCK WAIT TIMEOUT / committed=0\n保持元と解除可否は未確認です。');return true;}
  if(isHistoryQuery(c)){fresh(g,'history');recordHistoryCheck(g,options);emit(g,variantHistoryFact(g));return true;}
  if(/^SELECT COUNT\(\*\) FROM sales WHERE business_date\s*=\s*'20261012'$/i.test(c)){v.countSeen=true;emit(g,'COUNT(*) = '+v.rows+' / 入力件数との照合・復旧方法の確認が必要');return true;}
- if(c==="SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT'"&&v.kind==='active-lock'){g.lockInspected=true;emit(g,'waiter: SALES_IMPORT / holder: SESSION 812 (REPORT_EXPORT)\ncommitted=0 / 保持元の稼働状況・解除可否はDB担当へ確認が必要');return true;}
+ if(c==="SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT'"&&v.kind==='active-lock'){if(g.lockReleased){emit(g,'現在のロック待ちはありません。');return true;}g.lockInspected=true;emit(g,'waiter: SALES_IMPORT / holder: SESSION 812 (REPORT_EXPORT)\ncommitted=0 / 保持元の稼働状況・解除可否はDB担当へ確認が必要');return true;}
  if(c==='job stop REPORT_EXPORT'&&v.kind==='active-lock'){emit(g,'REPORT_EXPORT STOPPED / 正常処理中の帳票出力が中断','error');beginManagerEnding(g,c,'正常稼働中のREPORT_EXPORTを強制停止し、帳票出力を中断させた。');return true;}
  if(!/^job (rerun|resume|reconcile) SALES_IMPORT/i.test(c))return false;
  g.historyRevision++;
@@ -226,7 +226,11 @@ function requestApprovalCore(g,target){
  }else return;
  if(!g.approved.has(target))progress(g);g.approved.add(target);event(g,`${target}の再実行承認`);push(g,'internal','鬼塚｜リーダー',`${target}の再実行を承認する。対象を取り違えるなよ。実行後の確認まで、お前の担当だ。`);
 }
-export function execute(g,raw,options={}){return withDialogue(g,{kind:'command'},()=>executeCore(g,raw,options));}
+export function execute(g,raw,options={}){
+ const before=g.terminal.length,actions=g.actions;
+ try{return withDialogue(g,{kind:'command'},()=>executeCore(g,raw,options));}
+ finally{const info=inspection(raw);if(info&&g.actions>actions){const results=g.terminal.slice(before).filter(t=>t.kind!=='command');if(results.length)g.observations.push({command:raw,key:info.key,target:info.target,purpose:options.verificationId||'standard',at:g.minutes,signature:inspectionSignature(g,info.key),text:results.map(t=>t.text).join('\n')});}}
+}
 function executeCore(g,raw,options={}){
  if(g.ended||!g.started)return;const input=raw.trim();if(!input||historyBlocked(g,input,options))return;if(!act(g,/^job\s+(rerun|resume|reconcile)\s/i.test(input)?15:10))return;push(g,'operations','あなた',`「${input}」を入力しました。`);g.terminal.push({text:'$ '+input,kind:'command'});
  const c=input.replace(/\s+/g,' ').replace(/;$/,'').trim();
@@ -236,7 +240,7 @@ function executeCore(g,raw,options={}){
  if(/^tail(?: -n \d+)? \/logs\/SALES_IMPORT\.log$/i.test(c)||/^cat \/logs\/SALES_IMPORT\.log$/i.test(c)){fresh(g,'log');return emit(g,g.recovered?`${time({minutes:g.recoveredAt})} SALES_IMPORT NORMAL RC=0 / 1,248 rows\nSALES_SUMMARY NORMAL RC=0`:g.lockEncountered?'ERROR LOCK TIMEOUT / RC=28 / 0 rows committed / ROLLBACK済み':`01:17 ERROR INPUT FILE NOT FOUND\nexpected: /data/inbox/sales_${DAY}.csv\nprocessed: 0 rows / RC=12`);}
  if(/^ls(?: -l)? \/data\/inbox\/?$/i.test(c)){fresh(g,'files');return emit(g,`-rw-r----- batch batch 48210 Oct 11 23:58 sales_20261011.csv${g.file?`\n-rw-r----- batch batch 49920 Oct 12 ${time({minutes:g.fileAt})} sales_20261012.csv`:''}`);}
  if(/^SELECT \* FROM batch_history WHERE business_date\s*=\s*'20261012'$/i.test(c)){fresh(g,'history');recordHistoryCheck(g,options);return emit(g,g.recovered?'SALES_IMPORT | 20261012 | NORMAL | 1248 rows':'当日処理履歴: 0 rows（未処理）');}
- if(c==="SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT'"){if(!g.lockEncountered)return emit(g,'現在のロック待ちはありません。');g.lockInspected=true;progress(g);return emit(g,'waiter: SALES_IMPORT / holder: SESSION 812 (REPORT_EXPORT)\n取込更新件数: 0 / トランザクションはROLLBACK済み');}
+ if(c==="SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT'"){if(!g.lockEncountered||g.lockReleased)return emit(g,'現在のロック待ちはありません。');g.lockInspected=true;progress(g);return emit(g,'waiter: SALES_IMPORT / holder: SESSION 812 (REPORT_EXPORT)\n取込更新件数: 0 / トランザクションはROLLBACK済み');}
  if(c==='check /data/inbox/sales_20261012.csv'){
   if(!g.file)return emit(g,'検証失敗：当日ファイルが存在しません。','error');if(g.fileDamaged){if(!g.mismatchSeen)progress(g);g.mismatchSeen=true;event(g,'受信ファイルの欠損を発見');return emit(g,'検証NG：ヘッダー1,248件 / 実データ1,247件\nCHECKSUM MISMATCH / 転送末尾が欠損しています。','error');}fresh(g,'checked');return emit(g,'日付=20261012 / 件数=1,248 / checksum OK / フォーマット OK','success');
  }
@@ -505,7 +509,7 @@ function baseChoices(g){
 }
 
 export function chooseAction(g,choice){
- if(g.dispatch||!choice||!nextChoices(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ if(g.dispatch||!choice||!actionCatalog(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
  if(choice.type==='meeting'){try{answerMeeting(g,choice);}finally{endForDeadline(g);checkPromise(g);}return;}
  if(choice.type==='variant'){withDialogue(g,{kind:'variant'},()=>variantAction(g,choice));return;}
  if(choice.type==='history-plan'){organizeHistory(g,choice);return;}
@@ -578,6 +582,55 @@ export function nextChoices(g){
  if(g.correctionNeeded||g.replyIdle>=60||(g.customerPromise?.nextReminder&&!g.customerPromise.nextReportSent)){if(g.internalRequest&&choices[2]?.id==='internal-report'){choices[1]=choices[2];}choices[2]={label:g.correctionNeeded?'根拠のない復旧時刻を訂正し、現在の状況を伝える':'顧客に現在の確認状況と、次の対応を報告する',type:'message',channel:'customer',id:'progress-report',text:(g.correctionNeeded?'先ほどの5分以内の復旧見込みは根拠がなく、訂正します。':'')+customerStatusText(g),detail:'顧客へメール'};}
  if(g.setbacks){const offset=g.actions%3;return [...choices.slice(offset),...choices.slice(0,offset)];}
  return choices;
+}
+
+// Presentation catalog and immutable observation snapshots. Reading never executes an action.
+function inspection(raw=''){
+ const c=raw.replace(/\s+/g,' ').replace(/;$/,'').trim();
+ if(/^(tail|cat) .*\/logs\/SALES_IMPORT\.log$/i.test(c))return {key:'log',target:'SALES_IMPORT / 異常終了ログ'};
+ if(/^ls .*\/data\/inbox\/?$/i.test(c))return {key:'files',target:'/data/inbox / 受信一覧'};
+ if(c==='check /data/inbox/sales_20261012.csv')return {key:'file-check',target:'sales_20261012.csv / 件数・チェックサム'};
+ if(isHistoryQuery(c))return {key:'history',target:'SALES_IMPORT / 20261012 / 処理履歴'};
+ if(/^SELECT COUNT\(\*\) FROM sales WHERE business_date\s*=\s*'20261012'$/i.test(c))return {key:'count',target:'sales / 20261012 / 登録件数'};
+ if(c==="SELECT * FROM session_locks WHERE job_name = 'SALES_IMPORT'")return {key:'locks',target:'SALES_IMPORT / ロック保持元'};
+ if(/^job status(?: SALES_IMPORT)?$/i.test(c))return {key:'status',target:'ジョブ状態一覧'};
+ if(c==='job status SALES_SUMMARY')return {key:'summary',target:'SALES_SUMMARY / 後続状態'};
+ return null;
+}
+function inspectionSignature(g,key){
+ const execution=[g.historyRevision,g.recovered,g.recoveredAt,g.lockEncountered,g.lockReleased];
+ const file=[g.file,g.fileAt??null,g.fileDamaged];
+ return JSON.stringify(key==='files'||key==='file-check'?file:key==='locks'?[g.lockEncountered,g.lockReleased,g.variant?.holderDone??false]:key==='count'?[g.historyRevision,g.variant?.rows??(g.recovered?1248:0)]:key==='history'?execution:key==='status'?[...execution,g.secondary]:execution);
+}
+export function knownInformation(g){return (g.observations||[]).map((o,index)=>({...o,index,stale:o.signature!==inspectionSignature(g,o.key)}));}
+export function inspectionDone(g,choice){const info=inspection(choice.command);return !!info&&!choice.verificationId&&(g.observations||[]).some(o=>o.key===info.key&&o.signature===inspectionSignature(g,info.key));}
+export function actionCatalog(g){
+ const current=nextChoices(g);
+ if(g.ended||g.dispatch||meetingActive(g)||current.some(c=>['correction','history-plan','meeting'].includes(c.type))||g.infraMenu)return current;
+ // Keep existing stage-specific options reachable when a report occupies a slot.
+ const seen=new Set();return [...current,...baseChoices(g),...workChoices(g)].filter(c=>{
+  if(c.id==='initial'&&(g.reported||g.firstReportDelegated))return false;
+  if(c.command&&isHistoryQuery(c.command)&&historyBlocked(g,c.command,{verificationId:c.verificationId}))return false;
+  const key=JSON.stringify([c.type,c.command,c.verificationId,c.id,c.target,c.channel]);if(seen.has(key))return false;seen.add(key);return true;
+ });
+}
+export function canInformationRecheck(g,index){const o=g.observations?.[index];return !!o&&!g.ended&&!g.dispatch&&!meetingActive(g)&&!nextChoices(g).some(c=>['history-plan','correction'].includes(c.type))&&!historyBlocked(g,o.command,{});}
+export function informationRecheck(g,index){
+ if(!canInformationRecheck(g,index))return false;
+ execute(g,g.observations[index].command);return true;
+}
+export function actionLabel(g,c){
+ const info=inspection(c.command);
+ if(c.verificationId)return c.label;
+ if(info){const old=(g.observations||[]).some(o=>o.key===info.key);return ({log:old?'操作後のSALES_IMPORTログを確認する':'今回の異常終了ログを確認する',files:'受信ファイル一覧を確認する', 'file-check':old?'更新後のファイル件数・チェックサムを検証する':'受信ファイルの件数・チェックサムを確認する',history:'当日の処理履歴・コミット状況をSQLで確認する',count:g.recovered?'復旧後のDB登録件数を照合する':'当日のDB登録済み件数をSQLで確認する',locks:old?'ロック保持元の状態を再確認する':'ロック保持元の状態を確認する',status:'ジョブの現在の状態を確認する',summary:'後続SALES_SUMMARYの状態を確認する'})[info.key];}
+ if(c.command==='job rerun SALES_IMPORT')return 'SALES_IMPORTを全件・最初から再実行する'+(g.approved.has(JOB)?'（承認済み）':'（未承認）');
+ if(c.command?.startsWith('job stop '))return 'ジョブを停止する：'+c.command.slice(9);
+ return c.label;
+}
+export function communicationChoice(c){return c.type==='approval'||c.type==='infra-menu'||c.type==='message'&&!['impact-review','handover','patch-file'].includes(c.id)||c.type==='variant'&&['variant-contact','variant-resend','variant-resend-yes'].includes(c.id);}
+export function pendingCommunications(g){
+ if(g.ended||g.dispatch)return '';
+ return [g.firstReportInstruction&&!g.reported&&!g.firstReportDelegated?'顧客への一次報が未送信':null,g.internalRequest?'鬼塚から状況報告の要求あり':null,promisePending(g)?'顧客への見込み訂正・説明が未完了':null,actionCatalog(g).some(c=>c.type==='approval')?'実行承認の確認が未完了':null].filter(Boolean).join(' ／ ');
 }
 
 // Topics represent distinct points, not interchangeable paraphrases. Exhaustion is silence.
@@ -792,6 +845,8 @@ export function restoreGame(raw){
   if(g.managerEnding){if(typeof g.managerEnding.operation!=='string'||typeof g.managerEnding.impact!=='string'||!['sequence','blackout'].includes(g.managerEnding.phase))return null;g.ended=true;g.result='二次障害';g.dispatch=null;g.call=false;g.callReason=null;}
   if(g.meeting&&(!['opening','followup','repair','closing','done'].includes(g.meeting.phase)||typeof g.meeting.reason!=='string'))return null;
   if(!['player','onizuka'].includes(g.upperReporter))g.upperReporter='player';
+  if(!Array.isArray(g.observations))g.observations=[];
+  g.observations=g.observations.filter(o=>o&&inspection(o.command)?.key===o.key&&typeof o.text==='string'&&typeof o.signature==='string'&&Number.isFinite(o.at));
   if(!Array.isArray(g.infraAsked))g.infraAsked=[];
   if(!Array.isArray(g.dangerActions))g.dangerActions=[];
   if(data.dangerActions===undefined)g.dangerActions=g.events.filter(e=>e.text==='SALES_IMPORTを無断で再実行').map(e=>({kind:'unauthorized',operation:'job rerun SALES_IMPORT',time:e.time}));
