@@ -23,6 +23,33 @@ function ui(saved=null){
  if(!saved)run("g=createGame({setbacks:false});start(g);g.firstReportInstruction=false;send(g,'internal',internalStatusText(g),'internal-report');g.callSeen=true;visible=g.timeline.length;$('intro').close();render();");
  return {run,el,intervals,timeouts,listeners,async drain(){for(let i=0;i<300&&run('busy');i++){const fn=timeouts.shift();if(fn)fn();await Promise.resolve();}assert.equal(run('busy'),false);}};
 }
+function navigate(h,panel){
+ if(h.run('choicePanel')===panel)return;
+ for(let n=0;n<12&&h.run('choicePanel')!=='work';n++){
+  const i=h.run("displayedChoices().findIndex(c=>c.id==='back-work'||c.id==='next-page')");assert.ok(i>=0);h.el('choices').children[i].onclick();
+ }
+ if(panel==='work')return;
+ h.el('choices').children[h.run("displayedChoices().findIndex(c=>c.id==='more')")].onclick();
+ if(panel==='more')return;
+ for(let n=0;n<12;n++){
+  assert.ok(h.el('choices').children.length<=3);
+  const i=h.run(`displayedChoices().findIndex(c=>c.id===${JSON.stringify(panel)})`);
+  if(i>=0){h.el('choices').children[i].onclick();return;}
+  const next=h.run("displayedChoices().findIndex(c=>c.id==='next-page')");assert.ok(next>=0);h.el('choices').children[next].onclick();
+ }
+ throw Error('navigation did not finish');
+}
+function findButton(h,predicate){
+ for(const panel of ['work','more','reports']){
+  navigate(h,panel);
+  for(let n=0;n<12;n++){
+   assert.ok(h.el('choices').children.length<=3);
+   const i=h.run(`displayedChoices().findIndex(c=>${predicate})`);if(i>=0)return h.el('choices').children[i];
+   const next=h.run("displayedChoices().findIndex(c=>c.id==='next-page')");if(next<0)break;h.el('choices').children[next].onclick();
+  }
+ }
+ return undefined;
+}
 test('行動の返答を表示中は時計を止め、要求を返答後に表示してから三択を更新する',async()=>{
  const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');visible=g.timeline.length;render();g.techIdle=89;");
  const choices=h.el('choices').children;
@@ -31,7 +58,7 @@ test('行動の返答を表示中は時計を止め、要求を返答後に表�
  await h.drain();assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent==='現在の状況と次の対応を報告する'));assert.ok(h.el('choices').children.every(b=>!b.disabled));assert.equal(h.run('visible'),h.run('g.timeline.length'));
 });
 test('タップ中はボタンを差し替えず失効した選択から別操作を実行しない',async()=>{
- const h=ui();const buttons=h.el('choices').children;const dangerous=buttons.find(b=>b.children[1].textContent.includes('SALES_IMPORTを全件・最初から再実行'));assert.ok(dangerous);dangerous.onpointerdown();h.run("g.internalRequest={id:99,reason:'timer',at:g.clock};renderChoices();");assert.equal(h.el('choices').children,buttons);const actions=h.run('g.actions');dangerous.onclick();await h.drain();assert.equal(h.run('g.actions'),actions);assert.equal(h.run('g.dispatch'),null);assert.equal(h.run('g.mistakes'),0);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent==='現在の状況と次の対応を報告する'));
+ const h=ui();const dangerous=findButton(h,"c.command==='job rerun SALES_IMPORT'");const buttons=h.el('choices').children;assert.ok(dangerous);dangerous.onpointerdown();h.run("g.internalRequest={id:99,reason:'timer',at:g.clock};renderChoices();");assert.equal(h.el('choices').children,buttons);const actions=h.run('g.actions');dangerous.onclick();await h.drain();assert.equal(h.run('g.actions'),actions);assert.equal(h.run('g.dispatch'),null);assert.equal(h.run('g.mistakes'),0);assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent==='現在の状況と次の対応を報告する'));
 });
 test('着信ダイアログ中とタップ中は報告遅延の時計を進めない',()=>{
  const h=ui();for(const setup of ["$('call').showModal();", "$('call').close();pressedChoice=$('choices').children[0];"]){h.run(setup);const clock=h.run('g.clock');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.run('g.clock'),clock);}
@@ -42,7 +69,7 @@ test('期限直前の調査は一度だけ実行し古い催促を後から追�
 
 test('Zoom画面は操作結果の表示後に開き、通常三択を閉じ会議終了後に戻す',async()=>{
  const h=ui();h.run("g.setbacks=true;g.file=true;g.fileDamaged=true;g.facts.log=true;g.facts.files=true;execute(g,'check /data/inbox/sales_20261012.csv');playReplies();");assert.equal(h.el('meeting').open,false);await h.drain();assert.equal(h.el('meeting').open,true);assert.equal(h.el('meeting-choices').children.length,3);assert.equal(h.el('choices').children.length,0);const clock=h.run('g.clock');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.run('g.clock'),clock);
- h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');assert.equal(h.el('meeting-log').children.at(-1).children[0].textContent,'あなた');await h.drain();h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.ok(h.el('choices').children.length>0);h.el('open-reports').onclick();assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('田山')));h.el('back-to-work').onclick();assert.equal(h.run('g.mismatchSeen'),true);
+ h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');assert.equal(h.el('meeting-log').children.at(-1).children[0].textContent,'あなた');await h.drain();h.el('meeting-choices').children[0].onclick();assert.equal(h.run('g.timeline[visible-1].sender'),'あなた');await h.drain();assert.equal(h.el('meeting-return').hidden,false);h.el('meeting-return').onclick();await h.drain();assert.equal(h.el('meeting').open,false);assert.ok(h.el('choices').children.length>0);navigate(h,'reports');assert.ok(h.el('choices').children.some(b=>b.children[1]?.textContent.includes('田山')));navigate(h,'work');assert.equal(h.run('g.mismatchSeen'),true);
 });
 
 test('マネージャー入力中の後に暗転し結果ボタンを押すまで振り返りを表示しない',async()=>{
@@ -109,7 +136,7 @@ test('通常出勤の結果画面も報告担当変更と単独報告見送り�
 
 test('顧客への遅い撤回から訂正三択へ進み、材料提出は一度だけ5分で復旧操作はしない',async()=>{
  const h=ui();h.run("answerCall(g,'promise');execute(g,'job status');visible=g.timeline.length;render();");
- const button=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('根拠のない復旧時刻を訂正'));assert.ok(button);button.onclick();await h.drain();
+ const button=findButton(h,"c.label.includes('根拠のない復旧時刻を訂正')");assert.ok(button);button.onclick();await h.drain();
  assert.equal(h.el('choices').children.length,3);const facts=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('鬼塚へ共有'));assert.ok(facts);const at=h.run('g.minutes');facts.onclick();facts.onclick();await h.drain();assert.equal(h.run('g.minutes'),at+5);assert.equal(h.run('g.customerPromise.explanationCompleted'),true);assert.equal(h.run('g.recovered'),false);
  assert.ok(h.run("g.timeline.some(m=>m.channel==='customer'&&m.text.includes('業務側へ再案内します'))"));const saved=h.run('serializeGame(g)');const resumed=ui(saved);await resumed.drain();assert.equal(resumed.run('g.minutes'),at+5);assert.equal(resumed.run('g.customerPromise.explanationCompleted'),true);
 });
@@ -140,24 +167,24 @@ test('scenario/variantのない旧セーブは従来のDBロック見出しを�
 
 test('情報閲覧と報告メニュー開閉はゲーム状態を変更せず、閲覧中の催促も停止する',()=>{
  const h=ui();h.run("execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");visible=g.timeline.length;render();");const before=h.run('serializeGame(g)');
- for(let n=0;n<4;n++){h.el('open-information').onclick();h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.el('information').open,true);assert.ok(h.el('information-list').children.length);h.el('close-information').onclick();h.el('open-reports').onclick();h.el('back-to-work').onclick();}
+ for(let n=0;n<4;n++){navigate(h,'information');h.run('last=Date.now()-2000');h.intervals[0]();assert.equal(h.el('information').hidden,false);assert.ok(h.el('information-list').children.length);navigate(h,'work');navigate(h,'reports');navigate(h,'work');}
  assert.equal(h.run('serializeGame(g)'),before);
 });
 test('情報の実SQL再実行だけが10分経過と段階的停滞を発火し、4回後は再実行を無効化',async()=>{
  const h=ui();h.run("execute(g,\"SELECT * FROM batch_history WHERE business_date = '20261012';\");visible=g.timeline.length;render();");
- for(let count=2;count<=4;count++){const at=h.run('g.minutes');h.el('open-information').onclick();const b=h.el('information-list').children[0].children.at(-1);assert.equal(b.disabled,false);b.onclick();b.onclick();await h.drain();assert.equal(h.run('g.minutes'),at+10);assert.equal(h.run('g.historyReview.count'),count);}
- assert.equal(h.el('choices').children.length,3);h.el('choices').children[0].onclick();await h.drain();h.el('open-information').onclick();assert.equal(h.el('information-list').children[0].children.at(-1).disabled,true);
+ for(let count=2;count<=4;count++){const at=h.run('g.minutes');navigate(h,'information');const b=h.el('choices').children[0];assert.equal(b.disabled,false);b.onclick();b.onclick();await h.drain();assert.equal(h.run('g.minutes'),at+10);assert.equal(h.run('g.historyReview.count'),count);}
+ assert.equal(h.el('choices').children.length,3);h.el('choices').children[0].onclick();await h.drain();navigate(h,'information');assert.equal(h.el('choices').children[0].disabled,true);
 });
 test('関連変化前の確認は作業候補から消え、再送後は過去の結果と未検証状態を維持する',()=>{
  const h=ui();h.run("g.file=true;g.fileAt=80;execute(g,'check /data/inbox/sales_20261012.csv');visible=g.timeline.length;render();");
  assert.equal(h.run("displayedChoices().some(c=>c.command==='check /data/inbox/sales_20261012.csv')"),false);
  const old=h.run('g.observations.at(-1).text');h.run('g.fileAt=150;g.fileDamaged=true;g.facts.checked=false;render();');
- h.el('open-information').onclick();assert.match(h.el('information-list').children[0].children[1].textContent,/更新前/);assert.equal(h.run('g.observations.at(-1).text'),old);assert.equal(h.run('g.facts.checked'),false);
+ navigate(h,'information');assert.match(h.el('information-list').children[0].children[1].textContent,/更新前/);assert.equal(h.run('g.observations.at(-1).text'),old);assert.equal(h.run('g.facts.checked'),false);
  const resumed=ui(h.run('serializeGame(g)'));assert.equal(resumed.run('knownInformation(g).at(-1).stale'),true);
 });
 test('旧セーブの存在しない結果を補完せず、新規プレイにも引き継がない',()=>{
  const h=ui();h.run("execute(g,'tail -n 30 /logs/SALES_IMPORT.log');");const old=JSON.parse(h.run('serializeGame(g)'));delete old.game.observations;
- const resumed=ui(JSON.stringify(old));resumed.el('open-information').onclick();assert.equal(resumed.run('knownInformation(g).length'),0);
+ const resumed=ui(JSON.stringify(old));navigate(resumed,'information');assert.equal(resumed.run('knownInformation(g).length'),0);
  h.run('restartGame()');assert.equal(h.run('g.observations.length'),0);
 });
 
@@ -167,10 +194,7 @@ for(const scenario of ['missing','partial','notification','active-lock'])test('�
   if(h.run('g.call'))h.run("answerCall(g,'explain');visible=g.timeline.length;rendered=visible;render();");
   if(h.run('meetingActive(g)')){while(h.run('g.meeting.phase')!=='closing'){h.run("chooseAction(g,nextChoices(g).find(c=>c.id==='meeting-good'));visible=g.timeline.length;rendered=visible;render();");}h.run('finishMeeting(g);visible=g.timeline.length;rendered=visible;render();');}
   if(h.run('!!g.internalRequest')&&!predicate.includes('initial')&&!predicate.includes('internal-report')){await pick("c.id==='internal-report'");}
-  let i=h.run(`displayedChoices().findIndex(c=>${predicate})`);
-  if(i<0){h.el('open-reports').onclick();i=h.run(`displayedChoices().findIndex(c=>${predicate})`);}
-  assert.ok(i>=0,scenario+' missing '+predicate+' '+h.run('JSON.stringify(actionCatalog(g))'));
-  const b=h.el('choices').children[i];assert.ok(!b.disabled);b.onclick();await h.drain();
+  const b=findButton(h,predicate);assert.ok(b,scenario+' missing '+predicate);assert.ok(!b.disabled);b.onclick();await h.drain();
  }
  const command=c=>pick('c.command==='+JSON.stringify(c));
  await pick("c.id==='initial'");await pick("c.id==='internal-report'");await command('tail -n 30 /logs/SALES_IMPORT.log');await command('ls -l /data/inbox');
@@ -201,5 +225,14 @@ test('ロック解放後の実再確認は保持元の過去の結果を書き�
 });
 test('整理後の危険な全件リランは表示内容どおりPMエンドに到達する',async()=>{
  const h=ui();h.run("g=createGame({scenario:'partial'});start(g);visible=g.timeline.length;rendered=visible;render();");
- const b=h.el('choices').children.find(b=>b.children[1]?.textContent.includes('全件・最初から'));assert.ok(b);b.onclick();b.onclick();await h.drain();assert.equal(h.run('g.actions'),1);assert.equal(h.run('g.result'),'二次障害');assert.equal(h.el('manager-blackout').hidden,false);
+ const b=findButton(h,"c.command==='job rerun SALES_IMPORT'");assert.ok(b);b.onclick();b.onclick();await h.drain();assert.equal(h.run('g.actions'),1);assert.equal(h.run('g.result'),'二次障害');assert.equal(h.el('manager-blackout').hidden,false);
+});
+
+test('操作欄は全メニューで最大3枠、独立した追加ボタンは設置しない',()=>{
+ const html=fs.readFileSync(new URL('../dist/index.html',import.meta.url),'utf8');
+ assert.doesNotMatch(html.match(/<footer[\s\S]*?<\/footer>/)[0],/<button/);
+ assert.doesNotMatch(html,/id="(?:open-reports|open-information|back-to-work|close-information)"/);
+ const h=ui();const before=h.run('serializeGame(g)');
+ for(const panel of ['more','reports','information','work']){navigate(h,panel);assert.ok(h.el('choices').children.length<=3);}
+ assert.equal(h.run('serializeGame(g)'),before);
 });
