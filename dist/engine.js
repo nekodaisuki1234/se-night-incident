@@ -12,7 +12,7 @@ export function createGame({setbacks=true,scenario='missing',random=Math.random}
  if(scenario==='random')scenario=SCENARIOS[Math.min(3,Math.max(0,Math.floor(random()*4)))];
  if(!SCENARIOS.includes(scenario))scenario='missing';
  const variant=scenario==='missing'?null:{kind:scenario,rows:scenario==='partial'?624:scenario==='notification'?1248:0,countSeen:false,planKnown:false,contacted:false,holderDone:false};
- return {observations:[],scenario,variant,historyReview:null,historyRevision:0,historyDirectives:[],customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
+ return {choiceHistory:[],observations:[],scenario,variant,historyReview:null,historyRevision:0,historyDirectives:[],customerPromise:null,customerPromiseHistory:[],evaluationVersion:1,meetingAssessment:{trust:0,mental:0},incidentSeconds:0,firstReportInstruction:false,firstReportDelegated:false,managerEnding:null,meeting:null,upperReporter:'player',internalRequest:null,internalRequestSeq:0,internalReportAnswered:0,infraDeadline:null,infraAsked:[],infraMenu:false,dispatch:null,dangerActions:[],tayamaConsulted:[],setbacks,fileRequested:false,fileDamaged:false,mismatchSeen:false,lockEncountered:false,lockInspected:false,lockReleased:false,criticCount:0,started:false,ended:false,result:null,minutes:77,trust:100,mental:100,mistakes:0,actions:0,
  facts:{log:false,files:false,history:false,checked:false,summary:false,count:false},file:!!variant,fileAt:variant?70:undefined,recovered:false,recoveredAt:null,impactReviewed:false,handoverDone:false,customerCompleted:false,customerReport:null,cleanupCompletedAt:null,successEnding:null,
  secondary:false,approved:new Set(),reported:false,internalReported:false,ack:false,clock:0,techIdle:0,replyIdle:0,techLevel:0,replyLevel:0,
  call:false,callSeen:false,terminal:[{text:'Connected to fin-batch-02 / operator: ses_nakada\n夜間売上取込が異常終了。後続の売上集計は待機中。',kind:'info'}],
@@ -509,7 +509,14 @@ function baseChoices(g){
 }
 
 export function chooseAction(g,choice){
- if(g.dispatch||!choice||!actionCatalog(g).some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ if(!choice)return;
+ const available=actionCatalog(g).concat(directChoices(g));
+ if(!available.some(c=>JSON.stringify(c)===JSON.stringify(choice)))return;
+ const key=choiceIdentity(choice),stamp=choiceContext(g,choice),actions=g.actions;
+ try{return applyChoice(g,choice);}finally{if(g.actions>actions){g.choiceHistory.push({key,stamp},{key,stamp:choiceContext(g,choice)});}}
+}
+function applyChoice(g,choice){
+ if(g.dispatch||!choice)return;
  if(choice.type==='meeting'){try{answerMeeting(g,choice);}finally{endForDeadline(g);checkPromise(g);}return;}
  if(choice.type==='variant'){withDialogue(g,{kind:'variant'},()=>variantAction(g,choice));return;}
  if(choice.type==='history-plan'){organizeHistory(g,choice);return;}
@@ -631,6 +638,32 @@ export function communicationChoice(c){return c.type==='approval'||c.type==='inf
 export function pendingCommunications(g){
  if(g.ended||g.dispatch)return '';
  return [g.firstReportInstruction&&!g.reported&&!g.firstReportDelegated?'顧客への一次報が未送信':null,g.internalRequest?'鬼塚から状況報告の要求あり':null,promisePending(g)?'顧客への見込み訂正・説明が未完了':null,actionCatalog(g).some(c=>c.type==='approval')?'実行承認の確認が未完了':null].filter(Boolean).join(' ／ ');
+}
+
+// A single, direct set of replies: no navigation or information-view choices.
+function choiceIdentity(c){return JSON.stringify([c.type,c.command,c.verificationId,c.id,c.target,c.channel]);}
+function choiceContext(g,c){
+ if(c.type==='message')return JSON.stringify([c.text,c.requestId??null,...(['complete','resend-file','release-lock'].includes(c.id)?[g.recovered,g.facts.summary,g.facts.count,g.impactReviewed,g.fileAt,g.fileDamaged,g.lockReleased]:[])]);
+ return JSON.stringify([g.file,g.fileAt,g.fileDamaged,g.historyRevision,g.recovered,g.lockReleased,g.facts.log,g.facts.files,g.facts.checked,g.facts.history,g.variant?.countSeen,g.variant?.holderDone]);
+}
+export function directChoices(g){
+ if(!g.started||g.ended||g.dispatch)return [];
+ const current=nextChoices(g);
+ if(meetingActive(g)||current.some(c=>['correction','history-plan','meeting'].includes(c.type)))return current.slice(0,3);
+ const work=workChoices(g),infra=infraStage(g)?baseChoices({...g,infraMenu:true}).filter(c=>infraQuery(c.id)):[];
+ const priority=[...current.filter(c=>c.verificationId),work[0],...current.filter(c=>['initial','internal-report','progress-report'].includes(c.id)),...work.slice(1),...actionCatalog(g),...infra];
+ const seen=new Set(),choices=[];
+ for(const c of priority){
+  if(!c||c.type==='infra-menu'||inspectionDone(g,c))continue;
+  if(c.id==='initial'&&(g.reported||g.firstReportDelegated))continue;
+  if(c.command&&historyBlocked(g,c.command,{verificationId:c.verificationId}))continue;
+  const key=choiceIdentity(c);if(seen.has(key))continue;seen.add(key);
+  if((g.choiceHistory||[]).some(h=>h.key===key&&h.stamp===choiceContext(g,c)))continue;
+  choices.push(c);if(choices.length===3)break;
+ }
+ // Do not pad with already-used actions just to fill three slots.
+ const offset=g.setbacks?g.actions%Math.max(1,choices.length):0;
+ return [...choices.slice(offset),...choices.slice(0,offset)];
 }
 
 // Topics represent distinct points, not interchangeable paraphrases. Exhaustion is silence.
@@ -845,6 +878,8 @@ export function restoreGame(raw){
   if(g.managerEnding){if(typeof g.managerEnding.operation!=='string'||typeof g.managerEnding.impact!=='string'||!['sequence','blackout'].includes(g.managerEnding.phase))return null;g.ended=true;g.result='二次障害';g.dispatch=null;g.call=false;g.callReason=null;}
   if(g.meeting&&(!['opening','followup','repair','closing','done'].includes(g.meeting.phase)||typeof g.meeting.reason!=='string'))return null;
   if(!['player','onizuka'].includes(g.upperReporter))g.upperReporter='player';
+  if(!Array.isArray(g.choiceHistory))g.choiceHistory=[];
+  g.choiceHistory=g.choiceHistory.filter(h=>h&&typeof h.key==='string'&&typeof h.stamp==='string');
   if(!Array.isArray(g.observations))g.observations=[];
   g.observations=g.observations.filter(o=>o&&inspection(o.command)?.key===o.key&&typeof o.text==='string'&&typeof o.signature==='string'&&Number.isFinite(o.at));
   if(!Array.isArray(g.infraAsked))g.infraAsked=[];
